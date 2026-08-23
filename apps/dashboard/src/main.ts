@@ -55,7 +55,6 @@ function page(): string {
 <head>
 <meta charset="utf-8">
 <title>antfarm — live whiteboard</title>
-<meta http-equiv="refresh" content="0">
 <style>
   :root { color-scheme: dark; }
   body { background:#0d1117; color:#c9d1d9; font-family: Consolas, monospace; margin:24px; }
