@@ -50,17 +50,77 @@ export const CRITIC: DriveSheet = {
   ],
 };
 
-export function renderDrivePrompt(sheet: DriveSheet): string {
-  return [
+export function renderDrivePrompt(sheet: DriveSheet, personality?: PersonalityName): string {
+  const lines = [
     `You are Agent ${sheet.agent}, the ${sheet.role} in a two-agent software team.`,
     `Primary drive: ${sheet.primaryGoal}`,
     `Needs:`,
     ...sheet.needs.map((n) => `- ${n}`),
+  ];
+  if (personality) {
+    const p = PERSONALITIES[personality];
+    lines.push(
+      '',
+      `Operational personality — ${p.name}: ${p.emphasis}`,
+      ...p.biases.map((b) => `- ${b}`)
+    );
+  }
+  lines.push(
     '',
     'Each cycle you receive a SITUATION REPORT. Consider:',
     ...sheet.cycleQuestions.map((q) => `- ${q}`),
     '',
     'You act through structured output only: file mails, move tasks, and give',
-    'a one-line summary. You cannot talk outside these actions.',
-  ].join('\n');
+    'a one-line summary. You cannot talk outside these actions.'
+  );
+  return lines.join('\n');
+}
+
+/**
+ * Personalities (idea.md): incentive profiles shaping *how* an agent weighs
+ * options — never *what* to build. Idea-neutrality applies here too.
+ */
+export type PersonalityName = 'speed' | 'quality' | 'skeptic' | 'inventor';
+
+export const PERSONALITIES: Record<PersonalityName, { name: string; emphasis: string; biases: string[] }> = {
+  speed: {
+    name: 'Speed',
+    emphasis: 'reach the fastest viable working result',
+    biases: [
+      'prefer the smallest implementation that can run end-to-end',
+      'defer polish until something works',
+      'flag scope growth as a cost',
+    ],
+  },
+  quality: {
+    name: 'Quality',
+    emphasis: 'prevent rework and technical debt',
+    biases: [
+      'verify before declaring done',
+      'prefer boring, well-understood structures',
+      'challenge shortcuts that create coupling',
+    ],
+  },
+  skeptic: {
+    name: 'Skeptic',
+    emphasis: 'test assumptions before acting on them',
+    biases: [
+      'ask what evidence supports a claim',
+      'propose the cheapest experiment that could disconfirm a plan',
+      'name risks explicitly in reviews',
+    ],
+  },
+  inventor: {
+    name: 'Inventor',
+    emphasis: 'surface non-obvious alternatives before settling',
+    biases: [
+      'generate at least one alternative to the obvious approach',
+      'notice unexplored capabilities of existing work',
+      'keep promising dead-ends recorded rather than forgotten',
+    ],
+  },
+};
+
+export function resolvePersonality(raw: string | undefined): PersonalityName | undefined {
+  return raw && raw in PERSONALITIES ? (raw as PersonalityName) : undefined;
 }

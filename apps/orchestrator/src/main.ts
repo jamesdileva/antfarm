@@ -1,4 +1,4 @@
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { createRepos, openDb } from '@antfarm/db';
 import { Budgets } from './budgets.js';
@@ -70,7 +70,10 @@ async function makeDeps(dbPath: string, live: boolean): Promise<OrchestratorDeps
     await workspace.ensureRepo();
     const drivers: OrchestratorDeps['drivers'] = {};
     for (const agent of ['agent-a', 'agent-b']) {
-      drivers[agent] = new OpenCodeDriver({ driveSheet: OpenCodeDriver.sheetFor(agent) });
+      drivers[agent] = new OpenCodeDriver({
+        driveSheet: OpenCodeDriver.sheetFor(agent),
+        personality: cfg.personalities[agent],
+      });
     }
     return {
       repos,
@@ -135,19 +138,45 @@ async function run(): Promise<void> {
     console.log(`decisions logged: ${decisions.length} (latest: "${lastDecision.subject}")`);
   }
   for (const line of harnessSummary(deps.repos)) console.log(line);
+
+  // failure visibility: a stall is only mysterious if we hide the reasons
+  const failed = deps.repos.sessions.list().filter((s) => s.status === 'failed' || s.status === 'timed_out');
+  for (const agent of deps.agents) {
+    const lastFailed = failed.filter((s) => s.agent === agent).at(-1);
+    if (lastFailed) console.log(`${agent}: last failure [${lastFailed.status}] ${lastFailed.summary ?? '(no detail)'}`);
+  }
+  if (!failed.length && report.cyclesRun > 0) console.log('no failed or timed-out sessions');
+
   console.log(`events logged: ${deps.repos.events.all().length}`);
   if (report.skipped.length) console.log(`skipped: ${report.skipped.join(', ')}`);
   if (report.stucked.length) console.log(`stuck tasks swept: ${report.stucked.join(', ')}`);
   if (report.contested) console.log(`contested threads: ${report.contested}`);
 }
 
+async function reset(): Promise<void> {
+  const cfg = loadConfig();
+  const all = hasFlag('--yes');
+  const dbPath = join(cfg.projectRoot, 'lab.db');
+  rmSync(dbPath, { force: true });
+  rmSync(`${dbPath}-wal`, { force: true });
+  rmSync(`${dbPath}-shm`, { force: true });
+  console.log(`removed ${dbPath}`);
+  if (all) {
+    rmSync(cfg.projectRoot, { recursive: true, force: true });
+    console.log(`removed ${cfg.projectRoot}/ entirely (--yes)`);
+  } else {
+    console.log('workspace/shared/agent dirs kept; pass --yes to wipe the whole project/ tree');
+  }
+}
+
 async function main(): Promise<void> {
   const cmd = process.argv[2];
   // `run` is also the implicit command when only flags are passed
   if (cmd === 'init') await init();
+  else if (cmd === 'reset') await reset();
   else if (cmd === undefined || cmd === 'run' || cmd.startsWith('--')) await run();
   else {
-    console.error(`unknown command: ${cmd} (try: init | run)`);
+    console.error(`unknown command: ${cmd} (try: init | reset | run)`);
     process.exit(1);
   }
 }

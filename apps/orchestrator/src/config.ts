@@ -11,6 +11,8 @@ export interface LabConfig {
   backoffBaseMs: number;
   backoffMaxMs: number;
   harness: { buildCmd?: string; testCmd?: string; timeoutMs: number };
+  /** per-agent incentive overlays (see drives.PERSONALITIES), optional */
+  personalities: Record<string, string>;
 }
 
 const DEFAULTS: LabConfig = {
@@ -22,6 +24,7 @@ const DEFAULTS: LabConfig = {
   backoffBaseMs: 500,
   backoffMaxMs: 60_000,
   harness: { timeoutMs: 120_000 },
+  personalities: {},
 };
 
 /** Shallow-merge a lab.config.json over the defaults; absent file is fine. */
@@ -52,6 +55,9 @@ export function mergeConfig(base: LabConfig, raw: unknown): LabConfig {
     if (typeof h.buildCmd === 'string') out.harness.buildCmd = h.buildCmd;
     if (typeof h.testCmd === 'string') out.harness.testCmd = h.testCmd;
     if (typeof h.timeoutMs === 'number') out.harness.timeoutMs = h.timeoutMs;
+  }
+  if (typeof r.personalities === 'object' && r.personalities !== null) {
+    out.personalities = { ...r.personalities } as Record<string, string>;
   }
   return out;
 }

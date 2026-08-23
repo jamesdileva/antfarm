@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src"
+  },
+  "references": [{ "path": "../../packages/db" }],
+  "include": ["src"],
+  "exclude": ["**/*.test.ts"]
+}

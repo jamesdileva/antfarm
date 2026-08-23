@@ -2,7 +2,15 @@ import { createOpencodeClient } from '@opencode-ai/sdk';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { ActionsOutput, type ActionsOutputT } from '../actions.js';
 import type { AgentDriver, DriverContext } from '../driver.js';
-import { BUILDER, CRITIC, renderDrivePrompt, type DriveSheet } from '../drives.js';
+import {
+  BUILDER,
+  CRITIC,
+  PERSONALITIES,
+  renderDrivePrompt,
+  resolvePersonality,
+  type DriveSheet,
+  type PersonalityName,
+} from '../drives.js';
 
 /**
  * Minimal client surface we depend on — lets tests inject a fake without
@@ -32,6 +40,8 @@ export interface AssistantInfo {
 export interface OpenCodeDriverOptions {
   baseUrl?: string;
   driveSheet: DriveSheet;
+  /** incentive overlay name (see PERSONALITIES) */
+  personality?: string;
   /** extra static context injected every cycle (e.g. PROJECT_GOAL.md) */
   context?: () => string;
 }
@@ -73,7 +83,7 @@ export class OpenCodeDriver implements AgentDriver {
     const sessionId = created.data.id;
 
     const promptText = [
-      renderDrivePrompt(this.sheet),
+      renderDrivePrompt(this.sheet, resolvePersonality(this.opts.personality)),
       '',
       this.opts.context ? this.opts.context() : '',
       '',

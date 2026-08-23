@@ -10,6 +10,7 @@
   "scripts": {
     "dev": "npx tsx watch apps/orchestrator/src/main.ts --dry-run",
     "start": "npx tsx apps/orchestrator/src/main.ts",
+    "observe": "npx tsx apps/observer-cli/src/main.ts",
     "build": "npx tsc -b",
     "test": "npx vitest run"
   },

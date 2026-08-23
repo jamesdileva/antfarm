@@ -196,6 +196,38 @@ Exit criteria:
   post-decision flow unaffected
 - Directed-mode regression green end-to-end; suite fully green
 
+### Sprint 7 scope (2026-08-23)
+
+Findings from the first real live run (2026-08-23): stale dry-run state in
+`project/lab.db` pre-satisfied the Mode 2 decision gate (contaminated
+experiment); run stalled after 1 round without surfacing why.
+
+Goals:
+
+- **`reset` subcommand** (fixes contamination): wipes `project/lab.db`
+  (+WAL/SHM) and, with `--yes`, the whole `project/` tree; every experiment
+  starts from a clean lab
+- **Failure-visible summaries** (fixes silent stalls): run report shows
+  failed/timed-out session counts plus the last error tail per agent
+- **Observer CLI** (`apps/observer-cli`, Phase 4): read-only terminal
+  whiteboard polling SQLite — agent status, latest mail, board, checks,
+  recent events; pure `buildView()` separated from ANSI rendering (testable)
+- **Personalities** (Phase 4): incentive-profile overlays (Speed, Quality,
+  Skeptic, Inventor) as swappable config (`lab.config.json` → drive prompt);
+  idea-neutrality preserved — overlays shape *how* agents weigh options,
+  never *what* to build
+
+Out of scope (→ Sprint 8): web dashboard on SSE, Electron packaging +
+Sentinel §7 preflight.
+
+Exit criteria:
+
+- `reset` leaves zero tasks/mail/events; `--live` then runs with empty
+  board and the selection phase actually engaging in constrained mode
+- Summary prints per-agent failure reasons when cycles fail
+- Observer view builder tested against a seeded DB
+- Personality overlays render in prompts; suite fully green
+
 ## Phase 3 — Autonomy (Sprints 5–6)
 
 **Goal:** agents run without a script.

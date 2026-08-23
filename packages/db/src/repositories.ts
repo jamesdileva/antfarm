@@ -246,6 +246,10 @@ export class SessionRepo {
     return row;
   }
 
+  list(): SessionRow[] {
+    return this.db.prepare('SELECT * FROM sessions ORDER BY id').all() as SessionRow[];
+  }
+
   finish(id: number, status: 'done' | 'timed_out' | 'failed',
          usage: { tokensIn?: number; tokensOut?: number; cost?: number },
          summary?: string): SessionRow {

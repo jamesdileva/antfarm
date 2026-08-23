@@ -2,6 +2,7 @@
   "files": [],
   "references": [
     { "path": "packages/db" },
-    { "path": "apps/orchestrator" }
+    { "path": "apps/orchestrator" },
+    { "path": "apps/observer-cli" }
   ]
 }
