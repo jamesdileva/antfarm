@@ -79,8 +79,16 @@ async function makeDeps(dbPath: string, live: boolean): Promise<OrchestratorDeps
       }
     };
     process.once('exit', shutdown);
-    process.once('SIGINT', () => process.exit(0));
-    process.once('SIGBREAK', () => process.exit(0));
+    for (const sig of ['SIGINT', 'SIGBREAK', 'SIGTERM'] as NodeJS.Signals[]) {
+      try {
+        process.once(sig, () => {
+          shutdown();
+          process.exit(0);
+        });
+      } catch {
+        /* signal unsupported on this platform */
+      }
+    }
 
     const workspace = new Workspace(workspacePath(projectRoot));
     await workspace.ensureRepo();

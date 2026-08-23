@@ -1,4 +1,5 @@
 import { createOpencode } from '@opencode-ai/sdk';
+import { createServer } from 'node:net';
 import { ActionsOutput, type ActionsOutputT } from '../actions.js';
 import type { AgentDriver, DriverContext } from '../driver.js';
 import {
@@ -48,18 +49,34 @@ export interface HealthClient {
   };
 }
 
+/** Grab a free ephemeral port so we never collide with stale servers. */
+function freePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const srv = createServer();
+    srv.listen(0, '127.0.0.1', () => {
+      const addr = srv.address();
+      const port = typeof addr === 'object' && addr ? addr.port : 0;
+      srv.close(() => (port ? resolve(port) : reject(new Error('no free port'))));
+    });
+    srv.on('error', reject);
+  });
+}
+
 /**
  * Spawns a managed OpenCode server + client (createOpencode) instead of
- * assuming one is already listening. Caller owns the returned close().
+ * assuming one is already listening. Uses a fresh free port per run —
+ * a crashed earlier run can leave a server squatting on the default port.
+ * Caller owns the returned close().
  */
 export async function createManagedClient(opts?: {
   hostname?: string;
   port?: number;
   timeoutMs?: number;
 }): Promise<{ client: OpencodeSessionClient; serverUrl: string; close: () => void }> {
+  const port = opts?.port ?? (await freePort());
   const opencode = await createOpencode({
     hostname: opts?.hostname ?? '127.0.0.1',
-    port: opts?.port ?? 4096,
+    port,
     timeout: opts?.timeoutMs ?? 15_000,
   });
   const client = opencode.client as unknown as OpencodeSessionClient;
