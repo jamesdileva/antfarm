@@ -45,9 +45,14 @@ platform, observed live. Agents decide *what* to do; the platform decides
 |---------|--------------|
 | `npm install` | Install all workspaces (must succeed on fresh clone) |
 | `npm run dev` | Orchestrator in watch mode |
-| `npm start` | Orchestrator |
+| `npm start` | Orchestrator (`init --goal`, `reset [--yes]`, `--dry-run`, `--live`) |
 | `npm run build` | Type-check/build all workspaces |
-| `npm test` | Vitest suite (unit + dry-run fixtures) |
+| `npm test` | Vitest suite (unit + dry-run fixtures + chaos) |
+| `npm run observe` | Terminal whiteboard over the lab DB |
+| `npm run dashboard` | Web whiteboard at http://127.0.0.1:4177 |
+
+Live mode burns tokens — gate with `ANTFARM_LIVE_SMOKE=1`. The orchestrator
+spawns its own OpenCode server on an ephemeral port per run.
 
 ## Commit style
 
@@ -67,6 +72,7 @@ the subject names the phase goal.
 | 2026-08-23 | S5 | MEMORY.md compaction protocol (current + archive + file mirror, injected per cycle), stuck-task sweep to blocked (once, windowed), review-livelock contested resolution with rotating authority | 44/44 pass · build green · dry-run regression green | 68d0a58 |
 | 2026-08-23 | S6 | Build/test harness (events + situation summaries), Mode 2 selection gate (no activation pre-decision), unattended-run report polish; live overnight validation pending first real session | 51/51 pass · build green · dry-run regression green | 9d7b6b1 |
 | 2026-08-23 | S7 | lab reset (fixes live-run state contamination), failure-visible run summaries, observer CLI (view builder + ANSI whiteboard), personality overlays as config; first live run happened but was invalidated by stale DB — rerun needed | 56/56 pass · build green · dry-run green post-reset | 97a9cf3 |
+| 2026-08-23 | S7.1–8 | Live-run fixes: managed opencode server w/ ephemeral port + health probe, cold-start kickoff mail; clean Mode 2 validation (3 cycles, 1 DECISION, notes app chosen unprompted); web dashboard + Sentinel preflight; Phase 4 complete | 60/60 pass · build green · harness PASS on live workspace | 37bd9ca |
 
 <!--
 Add one row per sprint at completion:
