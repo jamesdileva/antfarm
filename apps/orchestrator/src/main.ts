@@ -92,6 +92,22 @@ async function makeDeps(dbPath: string, live: boolean): Promise<OrchestratorDeps
 
     const workspace = new Workspace(workspacePath(projectRoot));
     await workspace.ensureRepo();
+
+    // Cold-start bootstrap: a pristine lab has zero wake triggers (no mail,
+    // empty workspace). Idea-neutral kickoff — announces the environment,
+    // never suggests what to do in it.
+    if (repos.sessions.list().length === 0 && repos.mail.queuedFor('agent-a').length === 0) {
+      for (const agent of ['agent-a', 'agent-b'] as const) {
+        repos.mail.enqueue('orchestrator', {
+          to: agent,
+          type: 'STATUS',
+          subject: 'laboratory open',
+          body: 'The shared workspace is ready. Your situation reports carry everything you need.',
+          priority: 3,
+        });
+      }
+    }
+
     const drivers: OrchestratorDeps['drivers'] = {};
     for (const agent of ['agent-a', 'agent-b']) {
       drivers[agent] = new OpenCodeDriver({
