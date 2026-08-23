@@ -8,6 +8,7 @@ import { FakeDriver } from './drivers/fake.js';
 import { OpenCodeDriver } from './drivers/opencode.js';
 import { Workspace, workspacePath } from './workspace.js';
 import { seedGoal } from './goal.js';
+import { recoverOrphans } from './recover.js';
 
 export const PROJECT_ROOT = 'project';
 
@@ -56,6 +57,8 @@ async function init(): Promise<void> {
 async function makeDeps(dbPath: string, live: boolean): Promise<OrchestratorDeps> {
   mkdirSync(PROJECT_ROOT, { recursive: true });
   const db = openDb(dbPath);
+  const swept = recoverOrphans(db);
+  if (swept > 0) console.log(`orphan recovery: swept ${swept} stale running session(s)`);
   const repos = createRepos(db);
 
   if (live) {

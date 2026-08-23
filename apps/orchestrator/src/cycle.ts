@@ -15,6 +15,8 @@ export interface OrchestratorDeps {
   /** called after a successful cycle — e.g. workspace head snapshots */
   onCycleDone?: (agent: string) => Promise<void>;
   usageFor?: (output: ActionsOutputT) => { tokensIn: number; tokensOut: number };
+  /** wall-clock cap per cycle; exceeding it marks the session timed_out */
+  cycleTimeoutMs?: number;
 }
 
 export interface CycleResult {
@@ -22,9 +24,17 @@ export interface CycleResult {
   status: 'done' | 'skipped';
   sessionId?: number;
   reason?: string;
+  timedOut?: boolean;
+  productive?: boolean;
 }
 
 const defaultUsage = () => ({ tokensIn: 120, tokensOut: 80 });
+
+class CycleTimeoutError extends Error {
+  constructor(public readonly ms: number) {
+    super(`cycle exceeded wall-clock timeout of ${ms}ms`);
+  }
+}
 
 /** Run exactly one cycle for one agent. */
 export async function runCycle(deps: OrchestratorDeps, agent: string, cycle: number): Promise<CycleResult> {
@@ -47,11 +57,39 @@ export async function runCycle(deps: OrchestratorDeps, agent: string, cycle: num
 
   let output: ActionsOutputT;
   try {
-    output = await driver.run({ agent, cycle, situation });
+    output = await withTimeout(
+      driver.run({ agent, cycle, situation }),
+      deps.cycleTimeoutMs,
+      () => void driver.abort?.(agent)
+    );
   } catch (err) {
-    repos.sessions.finish(session.id, 'failed', {}, String(err));
-    repos.events.append({ kind: 'cycle_failed', actor: agent, payload: { error: String(err) } });
-    return { agent, status: 'done', sessionId: session.id };
+    if (err instanceof CycleTimeoutError) {
+      repos.sessions.finish(session.id, 'timed_out', {}, err.message);
+      repos.events.append({
+        kind: 'cycle_timed_out',
+        actor: agent,
+        payload: { sessionId: session.id, timeoutMs: err.ms },
+      });
+      return { agent, status: 'done', sessionId: session.id, timedOut: true };
+    }
+    // Malformed-output teaching loop (guide §4.2): the environment files a
+    // WARNING back to the sender instead of dropping the failure silently.
+    // Only one outstanding warning per agent — prevents fail↔warn churn.
+    repos.sessions.finish(session.id, 'failed', {}, truncate(String(err), 300));
+    const hasOutstanding = repos.mail
+      .queuedFor(agent)
+      .some((m) => m.type === 'WARNING' && m.subject.includes('could not be processed'));
+    if (!hasOutstanding) {
+      repos.mail.enqueue('orchestrator', {
+        to: agent,
+        type: 'WARNING',
+        subject: 'your last output could not be processed',
+        body: `Error: ${truncate(String(err), 300)}. Respond again with actions matching the required schema.`,
+        priority: 1,
+      });
+    }
+    repos.events.append({ kind: 'cycle_failed', actor: agent, payload: { error: truncate(String(err), 300) } });
+    return { agent, status: 'done', sessionId: session.id, productive: false };
   }
 
   commitActions(deps, agent, session.id, output);
@@ -59,13 +97,34 @@ export async function runCycle(deps: OrchestratorDeps, agent: string, cycle: num
   const usage = deps.usageFor?.(output) ?? defaultUsage();
   repos.sessions.finish(session.id, 'done', usage, output.summary);
   budgets.recordCycle(agent, usage.tokensIn, usage.tokensOut);
+  const productive = output.mails.length + output.taskMoves.length > 0;
   repos.events.append({
     kind: 'cycle_done',
     actor: agent,
     payload: { sessionId: session.id, mails: output.mails.length, taskMoves: output.taskMoves.length },
   });
 
-  return { agent, status: 'done', sessionId: session.id };
+  return { agent, status: 'done', sessionId: session.id, productive };
+}
+
+async function withTimeout<T>(p: Promise<T>, ms: number | undefined, onTimeout: () => void): Promise<T> {
+  if (!ms || ms <= 0) return p;
+  let timer: NodeJS.Timeout | undefined;
+  const gate = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      onTimeout();
+      reject(new CycleTimeoutError(ms));
+    }, ms);
+  });
+  try {
+    return await Promise.race([p, gate]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function truncate(s: string, max: number): string {
+  return s.length > max ? `${s.slice(0, max)}…` : s;
 }
 
 function driverGoal(deps: OrchestratorDeps, agent: string): string {

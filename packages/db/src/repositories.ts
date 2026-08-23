@@ -28,6 +28,8 @@ export interface MailInput {
   body: string;
   priority?: number;
   refs?: unknown[];
+  /** replies share the original's thread_id */
+  threadId?: string;
 }
 
 export interface MailRow {
@@ -57,7 +59,7 @@ export class MailRepo {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?)`
       )
       .run(
-        randomUUID(),
+        input.threadId ?? randomUUID(),
         from,
         input.to,
         input.type,
@@ -94,6 +96,44 @@ export class MailRepo {
       for (const id of ids) stmt.run(now, id);
     });
     tx(ids);
+  }
+
+  byThread(threadId: string): MailRow[] {
+    return this.db
+      .prepare('SELECT * FROM messages WHERE thread_id = ? ORDER BY id')
+      .all(threadId) as MailRow[];
+  }
+
+  /**
+   * Threads that were delivered but never answered by the recipient.
+   * A thread is answered when a later message in it was filed by the
+   * original recipient.
+   */
+  unansweredThreads(): { root: MailRow; answered: boolean }[] {
+    const roots = this.db
+      .prepare(
+        `SELECT * FROM messages
+         WHERE type IN ('QUESTION','HELP') AND status != 'answered'
+           AND delivered_at IS NOT NULL`
+      )
+      .all() as MailRow[];
+    return roots.map((root) => {
+      const thread = this.byThread(root.thread_id);
+      const answered = thread.some(
+        (m) => m.id !== root.id && m.from_agent === root.to_agent && m.id > root.id
+      );
+      if (answered) this.markAnswered(root.id);
+      return { root, answered };
+    });
+  }
+
+  markAnswered(id: number): void {
+    this.db.prepare(`UPDATE messages SET status = 'answered' WHERE id = ?`).run(id);
+  }
+
+  /** Backdate delivery for tests / escalation aging. */
+  setDeliveredAt(id: number, iso: string): void {
+    this.db.prepare('UPDATE messages SET delivered_at = ?, status = ? WHERE id = ?').run(iso, 'delivered', id);
   }
 }
 

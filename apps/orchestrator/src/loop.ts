@@ -1,30 +1,37 @@
 import type { OrchestratorDeps } from './cycle.js';
 import { runCycle } from './cycle.js';
 import { shouldWake } from './wake.js';
+import { escalateStale, type EscalationConfig } from './escalation.js';
+import { Backoff } from './backoff.js';
 
 export interface LoopOptions {
   maxRounds?: number;
+  /** mail escalation thresholds (default: stale after 1h) */
+  escalation?: Pick<EscalationConfig, 'staleAfterMs'>;
 }
 
 export interface LoopReport {
   rounds: number;
   cyclesRun: number;
   skipped: string[];
+  escalated: number;
 }
 
 const noSignals = { ownedTaskChanged: false, workspaceChanged: false };
 
 /**
- * Scheduler v2: round-robin over agents; each agent wakes when
- * shouldWake() says so — scripted work, queued mail, or polled environment
- * signals (workspace changes). All state in SQLite; resumable.
+ * Scheduler v3: round-robin over agents; wake = actionable input AND not
+ * in idle-backoff (queued mail overrides backoff). Runs the escalation
+ * sweep every round. All state in SQLite; resumable.
  */
 export async function runLoop(deps: OrchestratorDeps, opts: LoopOptions = {}): Promise<LoopReport> {
   const { repos, drivers, agents } = deps;
   const maxRounds = opts.maxRounds ?? 100;
 
   const cycleCounters = new Map<string, number>(agents.map((a) => [a, 0]));
-  const report: LoopReport = { rounds: 0, cyclesRun: 0, skipped: [] };
+  const lastCycleAt = new Map<string, number>();
+  const backoff = new Backoff(500, 60_000);
+  const report: LoopReport = { rounds: 0, cyclesRun: 0, skipped: [], escalated: 0 };
 
   for (let round = 1; round <= maxRounds; round++) {
     report.rounds = round;
@@ -33,14 +40,28 @@ export async function runLoop(deps: OrchestratorDeps, opts: LoopOptions = {}): P
     for (const agent of agents) {
       const driver = drivers[agent];
       if (!driver) continue;
+
+      // budget gate first — exhaustion must surface even when backoff would
+      // otherwise mask the skip
+      const budget = deps.budgets.canRun(agent);
+      if (!budget.ok) {
+        repos.events.append({ kind: 'cycle_skipped', actor: agent, payload: { reason: budget.reason } });
+        report.skipped.push(`${agent}:${budget.reason}`);
+        continue;
+      }
+
+      const queued = repos.mail.queuedFor(agent).length;
       const signals = deps.signals ? await deps.signals(agent) : noSignals;
-      const wake = shouldWake({
+      const wakeable = shouldWake({
         pendingWork: driver.pending(agent),
-        queuedMail: repos.mail.queuedFor(agent).length,
+        queuedMail: queued,
         ownedTaskChanged: signals.ownedTaskChanged,
         workspaceChanged: signals.workspaceChanged,
       });
-      if (!wake) continue;
+      if (!wakeable) continue;
+      // backoff yields to unread mail — never to silence
+      const last = lastCycleAt.get(agent);
+      if (queued === 0 && !backoff.isReady(agent, last ?? 0)) continue;
 
       const nextCycle = (cycleCounters.get(agent) ?? 0) + 1;
       const result = await runCycle(deps, agent, nextCycle);
@@ -48,11 +69,17 @@ export async function runLoop(deps: OrchestratorDeps, opts: LoopOptions = {}): P
         cycleCounters.set(agent, nextCycle);
         report.cyclesRun++;
         actedThisRound = true;
-        if (deps.signals) await deps.onCycleDone?.(agent);
+        backoff.record(agent, result.productive ?? false);
+        lastCycleAt.set(agent, Date.now());
+        await deps.onCycleDone?.(agent);
       } else if (result.reason) {
         report.skipped.push(`${agent}:${result.reason}`);
       }
     }
+
+    report.escalated += escalateStale(repos, {
+      staleAfterMs: opts.escalation?.staleAfterMs ?? 3_600_000,
+    }).length;
 
     // Stop when nobody has scripted work left and nothing is pending.
     const anyPending = agents.some((a) => drivers[a]?.pending(a));

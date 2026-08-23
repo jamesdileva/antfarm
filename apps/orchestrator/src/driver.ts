@@ -10,4 +10,6 @@ export interface DriverContext {
 export interface AgentDriver {
   pending(agent: string): boolean;
   run(ctx: DriverContext): Promise<ActionsOutputT>;
+  /** best-effort cancellation when the orchestrator times a cycle out */
+  abort?(agent: string): void | Promise<void>;
 }

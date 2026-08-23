@@ -91,6 +91,31 @@ Exit criteria:
 **Exit criteria:** agents coordinate exclusively through mail + board; chaos
 test (kill mid-cycle, restart, no lost work) green.
 
+### Sprint 3 scope (2026-08-23)
+
+Goals:
+
+- **Wall-clock session timeout**: mechanical per-cycle timeout; timed-out
+  sessions marked `timed_out`, driver `abort()` hook called
+- **Mail escalation rules**: QUESTION/HELP threads unanswered past a
+  staleness threshold escalate to an orchestrator WARNING (once per thread);
+  replies sharing a `thread_id` mark originals `answered`
+- **Malformed-output teaching loop**: invalid/failed driver output files a
+  WARNING back to the sender with the error summary (environment teaches
+  format, guide §4.2)
+- **Orphan recovery**: on startup, sessions stuck `running` from a previous
+  process are swept to `failed` with an audit event (Sentinel lesson §9:
+  restarts self-heal)
+- **Idle backoff**: unproductive cycles (zero actions filed) grow an
+  exponential, capped re-wake delay; productive cycles reset it
+
+Exit criteria:
+
+- Timeout fires mechanically (tested with a never-resolving driver)
+- Stale QUESTION escalates exactly once; thread reply suppresses escalation
+- Malformed output produces a WARNING mail to the sender, loop continues
+- Restart sweeps orphaned sessions; dry-run regression stays green
+
 ## Phase 3 — Autonomy (Sprints 5–6)
 
 **Goal:** agents run without a script.
