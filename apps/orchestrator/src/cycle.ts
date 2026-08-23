@@ -2,7 +2,7 @@ import type { Repos } from '@antfarm/db';
 import type { AgentDriver } from './driver.js';
 import type { ActionsOutputT } from './actions.js';
 import type { Budgets } from './budgets.js';
-import { buildSituation, type SituationContext } from './situation.js';
+import { buildSituation, hasDecision, type SituationContext } from './situation.js';
 import { applyMemoryUpdate } from './memory.js';
 
 export interface OrchestratorDeps {
@@ -161,6 +161,19 @@ function commitActions(deps: OrchestratorDeps, agent: string, sessionId: number,
     }
   }
   for (const move of output.taskMoves) {
+    // Mode 2 sequencing: no project work before a project is chosen.
+    if (
+      deps.situation?.mode === 'constrained' &&
+      !hasDecision(repos) &&
+      (move.state === 'active' || move.state === 'done')
+    ) {
+      repos.events.append({
+        kind: 'move_rejected_predecision',
+        actor: agent,
+        payload: { taskId: move.taskId, requested: move.state },
+      });
+      continue;
+    }
     try {
       const task = repos.tasks.move(agent, move.taskId, move.state, move.owner ?? undefined);
       repos.events.append({

@@ -1,9 +1,16 @@
 import type { Repos } from '@antfarm/db';
 import { readGoal } from './goal.js';
+import { harnessSummary } from './harness.js';
 
 export interface SituationContext {
   projectRoot: string;
   workspaceSummary?: string | null;
+  /** constrained = agents must decide what to build before building (Mode 2) */
+  mode?: 'directed' | 'constrained';
+}
+
+export function hasDecision(repos: Repos): boolean {
+  return repos.events.byKind('decision_logged').length > 0;
 }
 
 /** Decisions the agent hasn't seen yet — DECISIONS.md protocol (§2.4). */
@@ -43,13 +50,26 @@ export function buildSituation(repos: Repos, agent: string, ctx: SituationContex
   const goal = readGoal(ctx.projectRoot);
   const decisions = decisionsSince(repos, agent);
   const memory = repos.memory.current(agent);
+  const constrainedSelection =
+    ctx.mode === 'constrained' && !hasDecision(repos);
 
   const lines = [
     `SITUATION REPORT — ${agent}`,
     '',
     ...(goal ? ['PROJECT GOAL (authored by the human; treat as the mission):', goal, ''] : []),
+    ...(constrainedSelection
+      ? [
+          'PHASE: project selection.',
+          'No project has been chosen yet. Brainstorm via IDEA mail, converge,',
+          'and file a DECISION naming the project before starting any work.',
+          '',
+        ]
+      : []),
     ...(memory ? ['YOUR MEMORY.md (your own compacted working memory):', memory, ''] : []),
     ...(ctx.workspaceSummary ? ['Workspace:', `  ${ctx.workspaceSummary}`, ''] : []),
+    'Checks:',
+    ...harnessSummary(repos).map((s) => `  ${s}`),
+    '',
     'Unread mail:',
     ...(mail.length
       ? mail.map((m) => `  [${m.type}] #${m.id} from ${m.from_agent}: ${m.subject}\n      ${m.body}`)

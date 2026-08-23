@@ -10,6 +10,7 @@ import { Workspace, workspacePath } from './workspace.js';
 import { seedGoal } from './goal.js';
 import { recoverOrphans } from './recover.js';
 import { loadConfig, type LabConfig } from './config.js';
+import { harnessSummary, runHarness } from './harness.js';
 
 export const PROJECT_ROOT = 'project';
 
@@ -76,9 +77,22 @@ async function makeDeps(dbPath: string, live: boolean): Promise<OrchestratorDeps
       budgets: new Budgets(cfg.budgets),
       drivers,
       agents: ['agent-a', 'agent-b'],
-      situation: { projectRoot },
+      situation: {
+        projectRoot,
+        mode: cfg.mode,
+        workspaceSummary: await workspace.diffSummary(),
+      },
       signals: async (agent) => ({ ownedTaskChanged: false, workspaceChanged: await workspace.poll(agent) }),
-      onCycleDone: (agent) => workspace.markSeen(agent),
+      onCycleDone: async (agent) => {
+        await workspace.markSeen(agent);
+        // refresh checks between cycles so agents see fresh PASS/FAIL
+        await runHarness(repos, {
+          workspaceDir: workspacePath(projectRoot),
+          buildCmd: cfg.harness.buildCmd ?? 'npm run --if-present build',
+          testCmd: cfg.harness.testCmd ?? 'npm test',
+          timeoutMs: cfg.harness.timeoutMs,
+        });
+      },
       cycleTimeoutMs: cfg.cycleTimeoutMs,
       usageFor: () => ({ tokensIn: 0, tokensOut: 0 }),
     };
@@ -115,8 +129,16 @@ async function run(): Promise<void> {
   const report = await runLoop(deps);
   console.log(`${live ? 'live' : 'dry'}-run complete: ${report.cyclesRun} cycles over ${report.rounds} rounds`);
   console.log(`tasks: ${deps.repos.tasks.list().map((t) => `#${t.id}[${t.state}]`).join(' ')}`);
+  const decisions = deps.repos.events.byKind('decision_logged');
+  if (decisions.length) {
+    const lastDecision = JSON.parse(decisions.at(-1)!.payload) as { subject: string };
+    console.log(`decisions logged: ${decisions.length} (latest: "${lastDecision.subject}")`);
+  }
+  for (const line of harnessSummary(deps.repos)) console.log(line);
   console.log(`events logged: ${deps.repos.events.all().length}`);
   if (report.skipped.length) console.log(`skipped: ${report.skipped.join(', ')}`);
+  if (report.stucked.length) console.log(`stuck tasks swept: ${report.stucked.join(', ')}`);
+  if (report.contested) console.log(`contested threads: ${report.contested}`);
 }
 
 async function main(): Promise<void> {

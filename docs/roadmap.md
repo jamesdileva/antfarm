@@ -171,6 +171,31 @@ Exit criteria:
 - A 4-round REVIEW thread produces one contested-decision event, never two;
   resolver rotation is deterministic
 
+### Sprint 6 scope (2026-08-23)
+
+Goals:
+
+- **Build/test harness** (`src/harness.ts`): runs configurable build/test
+  commands inside `project/workspace` (child process, wall-clock timeout,
+  neutralized env), records `build_result`/`test_result` events with
+  duration + output tail, feeds PASS/FAIL summaries into every situation
+  report; injectable executor for tests
+- **Mode 2 (constrained autonomy) protocol**: `mode: constrained` in
+  lab.config.json — PROJECT_GOAL.md holds *constraints* only; the situation
+  report announces a project-selection phase until the first
+  `decision_logged` event; mechanically, task activation is rejected before
+  any decision exists (platform enforces sequencing, never content)
+- **Unattended-run ergonomics**: loop report extended (stuck/contested
+  counts), final summary printout covers board + decisions + budget skips
+
+Exit criteria:
+
+- Harness records PASS and FAIL deterministically (injected executor);
+  latest results appear verbatim in situation reports
+- Constrained mode blocks pre-decision activation with an audit event;
+  post-decision flow unaffected
+- Directed-mode regression green end-to-end; suite fully green
+
 ## Phase 3 — Autonomy (Sprints 5–6)
 
 **Goal:** agents run without a script.
