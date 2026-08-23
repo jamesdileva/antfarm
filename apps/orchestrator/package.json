@@ -9,7 +9,10 @@
   },
   "dependencies": {
     "@antfarm/db": "*",
-    "zod": "^3.24.0"
+    "@opencode-ai/sdk": "^1.0.0",
+    "simple-git": "^3.27.0",
+    "zod": "^3.24.0",
+    "zod-to-json-schema": "^3.24.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

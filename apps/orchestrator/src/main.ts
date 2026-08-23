@@ -2,9 +2,14 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { createRepos, openDb } from '@antfarm/db';
 import { Budgets } from './budgets.js';
-import { FakeDriver } from './drivers/fake.js';
 import { runLoop } from './loop.js';
 import type { OrchestratorDeps } from './cycle.js';
+import { FakeDriver } from './drivers/fake.js';
+import { OpenCodeDriver } from './drivers/opencode.js';
+import { Workspace, workspacePath } from './workspace.js';
+import { seedGoal } from './goal.js';
+
+export const PROJECT_ROOT = 'project';
 
 const demoScripts = {
   'agent-a': [
@@ -28,34 +33,94 @@ const demoScripts = {
   ],
 };
 
-async function main(): Promise<void> {
-  const args = process.argv.slice(2);
-  const dryRun = args.includes('--dry-run');
-  if (!dryRun) {
-    console.error('Only --dry-run is supported until the OpenCode driver lands (Sprint 2).');
+function argValue(flag: string): string | undefined {
+  const i = process.argv.indexOf(flag);
+  return i >= 0 ? process.argv[i + 1] : undefined;
+}
+
+function hasFlag(flag: string): boolean {
+  return process.argv.includes(flag);
+}
+
+async function init(): Promise<void> {
+  const goal = argValue('--goal');
+  if (!goal) {
+    console.error('usage: npm start -- init --goal "<text>"   (Mode 1: the human authors the goal)');
     process.exit(1);
   }
+  mkdirSync(PROJECT_ROOT, { recursive: true });
+  const path = seedGoal(PROJECT_ROOT, goal);
+  console.log(`goal seeded: ${path}`);
+}
 
-  mkdirSync('project', { recursive: true });
-  const db = openDb(join('project', 'lab.db'));
+async function makeDeps(dbPath: string, live: boolean): Promise<OrchestratorDeps> {
+  mkdirSync(PROJECT_ROOT, { recursive: true });
+  const db = openDb(dbPath);
   const repos = createRepos(db);
-  const deps: OrchestratorDeps = {
+
+  if (live) {
+    const workspace = new Workspace(workspacePath(PROJECT_ROOT));
+    await workspace.ensureRepo();
+    const drivers: OrchestratorDeps['drivers'] = {};
+    for (const agent of ['agent-a', 'agent-b']) {
+      drivers[agent] = new OpenCodeDriver({ driveSheet: OpenCodeDriver.sheetFor(agent) });
+    }
+    return {
+      repos,
+      budgets: new Budgets({ maxTokensPerCycle: 20_000, maxCyclesPerHour: 30 }),
+      drivers,
+      agents: ['agent-a', 'agent-b'],
+      situation: { projectRoot: PROJECT_ROOT },
+      signals: async (agent) => ({ ownedTaskChanged: false, workspaceChanged: await workspace.poll(agent) }),
+      onCycleDone: (agent) => workspace.markSeen(agent),
+      usageFor: () => ({ tokensIn: 0, tokensOut: 0 }),
+    };
+  }
+
+  return {
     repos,
     budgets: new Budgets({ maxTokensPerCycle: 2000, maxCyclesPerHour: 30 }),
     drivers: { 'agent-a': new FakeDriver(demoScripts), 'agent-b': new FakeDriver(demoScripts) },
     agents: ['agent-a', 'agent-b'],
+    situation: { projectRoot: PROJECT_ROOT },
   };
+}
 
-  // Seed one proposed task so scripted moves have a target.
-  if (repos.tasks.list().length === 0) {
-    repos.tasks.create('human', { title: 'Write architecture specification' });
+async function run(): Promise<void> {
+  const live = hasFlag('--live');
+  const dryRun = hasFlag('--dry-run');
+  if (!live && !dryRun) {
+    console.error('usage: npm start -- --dry-run | --live');
+    process.exit(1);
+  }
+  if (live && !process.env.ANTFARM_LIVE_SMOKE) {
+    console.error('live mode burns tokens — set ANTFARM_LIVE_SMOKE=1 to confirm');
+    process.exit(1);
+  }
+
+  const deps = await makeDeps(join(PROJECT_ROOT, 'lab.db'), live);
+
+  // Seed one proposed task so scripted moves have a target (dry-run only).
+  if (!live && deps.repos.tasks.list().length === 0) {
+    deps.repos.tasks.create('human', { title: 'Write architecture specification' });
   }
 
   const report = await runLoop(deps);
-  console.log(`dry-run complete: ${report.cyclesRun} cycles over ${report.rounds} rounds`);
-  console.log(`tasks: ${repos.tasks.list().map((t) => `#${t.id}[${t.state}]`).join(' ')}`);
-  console.log(`events logged: ${repos.events.all().length}`);
-  db.close();
+  console.log(`${live ? 'live' : 'dry'}-run complete: ${report.cyclesRun} cycles over ${report.rounds} rounds`);
+  console.log(`tasks: ${deps.repos.tasks.list().map((t) => `#${t.id}[${t.state}]`).join(' ')}`);
+  console.log(`events logged: ${deps.repos.events.all().length}`);
+  if (report.skipped.length) console.log(`skipped: ${report.skipped.join(', ')}`);
+}
+
+async function main(): Promise<void> {
+  const cmd = process.argv[2];
+  // `run` is also the implicit command when only flags are passed
+  if (cmd === 'init') await init();
+  else if (cmd === undefined || cmd === 'run' || cmd.startsWith('--')) await run();
+  else {
+    console.error(`unknown command: ${cmd} (try: init | run)`);
+    process.exit(1);
+  }
 }
 
 main().catch((err) => {

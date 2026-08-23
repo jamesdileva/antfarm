@@ -36,8 +36,34 @@ Goals:
 - **Fake agent driver** (scripted fixtures) — no OpenCode SDK yet; proves
   scheduling, mail filing, board moves, event audit trail
 
-Out of scope (→ Sprint 2): real SDK driver, Mode 1 goal seeding, git
-integration, situation-report grounding.
+### Sprint 2 scope (2026-08-23)
+
+Goals:
+
+- **Real OpenCode driver** (`drivers/opencode.ts`): session-per-cycle via
+  `session.create`/`session.prompt`, structured output through
+  `format: json_schema` (zod-validated on receipt), drive-sheet system
+  prompts (Builder/Critic incentive profiles — roles only, zero seeded
+  ideas), defensive token/cost extraction
+- **Mode 1 seeding**: `init --goal "<text>"` writes
+  `project/shared/PROJECT_GOAL.md`; goal is injected verbatim into every
+  situation report (human authors the goal, nothing else)
+- **Git integration** (`workspace.ts`): `project/workspace` repo bootstrap,
+  per-round change detection (HEAD/status) feeding the wake policy,
+  diff-summary grounding in situation reports
+- Signal polling hook in the scheduler (`signals(agent)` →
+  workspaceChanged/ownedTaskChanged) so real agents wake on environment
+  changes, not just scripted work
+- Mocked-client unit tests; live smoke gated behind `ANTFARM_LIVE_SMOKE=1`
+  (skipped by default — no token burn in CI)
+
+Exit criteria:
+
+- Dry-run suite still green (no regression); new driver unit tests pass
+- `init --goal` produces PROJECT_GOAL.md visible in next situation report
+- Workspace change flips the wake signal (unit-tested with a temp repo)
+- Live smoke documented (manual command); runs green when invoked with
+  credentials present
 
 Exit criteria:
 

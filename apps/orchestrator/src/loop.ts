@@ -12,9 +12,12 @@ export interface LoopReport {
   skipped: string[];
 }
 
+const noSignals = { ownedTaskChanged: false, workspaceChanged: false };
+
 /**
- * Scheduler v1: round-robin over agents; each agent wakes when
- * shouldWake() says so. Deterministic, resumable — all state is in SQLite.
+ * Scheduler v2: round-robin over agents; each agent wakes when
+ * shouldWake() says so — scripted work, queued mail, or polled environment
+ * signals (workspace changes). All state in SQLite; resumable.
  */
 export async function runLoop(deps: OrchestratorDeps, opts: LoopOptions = {}): Promise<LoopReport> {
   const { repos, drivers, agents } = deps;
@@ -30,11 +33,12 @@ export async function runLoop(deps: OrchestratorDeps, opts: LoopOptions = {}): P
     for (const agent of agents) {
       const driver = drivers[agent];
       if (!driver) continue;
+      const signals = deps.signals ? await deps.signals(agent) : noSignals;
       const wake = shouldWake({
         pendingWork: driver.pending(agent),
         queuedMail: repos.mail.queuedFor(agent).length,
-        ownedTaskChanged: false,
-        workspaceChanged: false,
+        ownedTaskChanged: signals.ownedTaskChanged,
+        workspaceChanged: signals.workspaceChanged,
       });
       if (!wake) continue;
 
@@ -44,12 +48,13 @@ export async function runLoop(deps: OrchestratorDeps, opts: LoopOptions = {}): P
         cycleCounters.set(agent, nextCycle);
         report.cyclesRun++;
         actedThisRound = true;
+        if (deps.signals) await deps.onCycleDone?.(agent);
       } else if (result.reason) {
         report.skipped.push(`${agent}:${result.reason}`);
       }
     }
 
-    // Stop when nobody has scripted work left and no mail is pending.
+    // Stop when nobody has scripted work left and nothing is pending.
     const anyPending = agents.some((a) => drivers[a]?.pending(a));
     const anyQueued = agents.some((a) => repos.mail.queuedFor(a).length > 0);
     if (!actedThisRound && !anyPending && !anyQueued) break;

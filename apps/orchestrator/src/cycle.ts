@@ -2,13 +2,18 @@ import type { Repos } from '@antfarm/db';
 import type { AgentDriver } from './driver.js';
 import type { ActionsOutputT } from './actions.js';
 import type { Budgets } from './budgets.js';
-import { buildSituation } from './situation.js';
+import { buildSituation, type SituationContext } from './situation.js';
 
 export interface OrchestratorDeps {
   repos: Repos;
   budgets: Budgets;
   drivers: Record<string, AgentDriver>;
   agents: string[];
+  situation?: SituationContext;
+  /** per-agent environment signals polled each round (workspace changes etc.) */
+  signals?: (agent: string) => Promise<{ ownedTaskChanged: boolean; workspaceChanged: boolean }>;
+  /** called after a successful cycle — e.g. workspace head snapshots */
+  onCycleDone?: (agent: string) => Promise<void>;
   usageFor?: (output: ActionsOutputT) => { tokensIn: number; tokensOut: number };
 }
 
@@ -36,11 +41,9 @@ export async function runCycle(deps: OrchestratorDeps, agent: string, cycle: num
 
   const mail = repos.mail.queuedFor(agent);
   repos.mail.markDelivered(mail.map((m) => m.id));
-  const situation = buildSituation(repos, agent);
-  // markDelivered happened after building the snapshot text; rebuild is
-  // unnecessary — queuedFor was captured before marking.
+  const situation = buildSituation(repos, agent, deps.situation ?? { projectRoot: 'project' });
 
-  const session = repos.sessions.start({ agent, cycle, goal: 'scripted dry-run cycle' });
+  const session = repos.sessions.start({ agent, cycle, goal: driverGoal(deps, agent) });
 
   let output: ActionsOutputT;
   try {
@@ -63,6 +66,11 @@ export async function runCycle(deps: OrchestratorDeps, agent: string, cycle: num
   });
 
   return { agent, status: 'done', sessionId: session.id };
+}
+
+function driverGoal(deps: OrchestratorDeps, agent: string): string {
+  const sheet = (deps.drivers[agent] as { sheet?: { role?: string } }).sheet;
+  return sheet?.role ? `${agent} (${sheet.role}) cycle` : `${agent} cycle`;
 }
 
 function commitActions(deps: OrchestratorDeps, agent: string, sessionId: number, output: ActionsOutputT): void {
