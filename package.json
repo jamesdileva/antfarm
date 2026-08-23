@@ -1,0 +1,21 @@
+{
+  "name": "antfarm",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npx tsx watch apps/orchestrator/src/main.ts --dry-run",
+    "start": "npx tsx apps/orchestrator/src/main.ts",
+    "build": "npx tsc -b",
+    "test": "npx vitest run"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.0.0"
+  }
+}

@@ -21,6 +21,34 @@ runs at the end of every sprint that touches manifests or packaging.
 **Exit criteria:** "create hello-world CLI" completes via A→B→A cycles;
 kill -9 mid-run resumes cleanly; cost per run logged.
 
+### Sprint 1 scope (2026-08-23)
+
+Goals:
+
+- Monorepo scaffold: npm workspaces, Sentinel-compliant root scripts
+  (`npx`-prefixed, fresh-clone green)
+- `packages/db`: full schema (messages/tasks/sessions/events per
+  architecture §4), transactional migrations, typed repositories, event
+  logging helper
+- `apps/orchestrator`: cycle runner + scheduler skeleton, wake policy
+  (pure fn), budgets v1 (per-cycle token cap, max-cycles/hour), task state
+  machine validation, zod-validated structured actions
+- **Fake agent driver** (scripted fixtures) — no OpenCode SDK yet; proves
+  scheduling, mail filing, board moves, event audit trail
+
+Out of scope (→ Sprint 2): real SDK driver, Mode 1 goal seeding, git
+integration, situation-report grounding.
+
+Exit criteria:
+
+- Fresh clone → `npm install` exits 0 unattended
+- `npm test`: unit tests (repos, task state machine, wake policy, budget
+  caps) + dry-run integration test (multi-cycle run files mail, moves tasks,
+  logs events)
+- Restart test: close DB mid-run, reopen, queued mail and board state
+  intact; loop resumes
+- `npm run build` type-checks all workspaces
+
 ## Phase 2 — Environment (Sprints 3–4)
 
 **Goal:** the environment becomes the product.
