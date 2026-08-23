@@ -35,7 +35,7 @@ export async function runLoop(deps: OrchestratorDeps, opts: LoopOptions = {}): P
 
   for (let round = 1; round <= maxRounds; round++) {
     report.rounds = round;
-    let actedThisRound = false;
+    let progressedThisRound = false;
 
     for (const agent of agents) {
       const driver = drivers[agent];
@@ -68,10 +68,12 @@ export async function runLoop(deps: OrchestratorDeps, opts: LoopOptions = {}): P
       if (result.status === 'done') {
         cycleCounters.set(agent, nextCycle);
         report.cyclesRun++;
-        actedThisRound = true;
         backoff.record(agent, result.productive ?? false);
         lastCycleAt.set(agent, Date.now());
-        await deps.onCycleDone?.(agent);
+        if (!result.failed) {
+          progressedThisRound = true;
+          await deps.onCycleDone?.(agent);
+        }
       } else if (result.reason) {
         report.skipped.push(`${agent}:${result.reason}`);
       }
@@ -81,10 +83,9 @@ export async function runLoop(deps: OrchestratorDeps, opts: LoopOptions = {}): P
       staleAfterMs: opts.escalation?.staleAfterMs ?? 3_600_000,
     }).length;
 
-    // Stop when nobody has scripted work left and nothing is pending.
-    const anyPending = agents.some((a) => drivers[a]?.pending(a));
-    const anyQueued = agents.some((a) => repos.mail.queuedFor(a).length > 0);
-    if (!actedThisRound && !anyPending && !anyQueued) break;
+    // Stall detection: a full round with zero successful cycles means the
+    // inputs are deterministic and repeating them changes nothing.
+    if (!progressedThisRound) break;
   }
 
   return report;

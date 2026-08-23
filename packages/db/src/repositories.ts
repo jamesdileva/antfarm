@@ -187,6 +187,12 @@ export class TaskRepo {
     if (!canTransition(task.state, toState)) {
       throw new Error(`illegal task transition ${task.state} -> ${toState}`);
     }
+    // Ownership rule (architecture §2.3): only the owner (or the platform
+    // itself) moves an owned task; claiming unowned tasks is open.
+    const privileged = actor === 'orchestrator' || actor === 'human';
+    if (task.owner && !privileged && task.owner !== actor) {
+      throw new Error(`illegal task move: ${actor} does not own task ${id} (owned by ${task.owner})`);
+    }
     this.db
       .prepare('UPDATE tasks SET state = ?, owner = COALESCE(?, owner), updated_at = ? WHERE id = ?')
       .run(toState, owner ?? null, new Date().toISOString(), id);
@@ -262,6 +268,27 @@ export interface EventRow {
   kind: string;
   actor: string;
   payload: string;
+}
+
+/** Per-agent platform bookkeeping (read pointers etc.). */
+export class AgentStateRepo {
+  constructor(private db: Db) {}
+
+  getDecisionPointer(agent: string): number {
+    const row = this.db
+      .prepare('SELECT last_decision_event FROM agent_state WHERE agent = ?')
+      .get(agent) as { last_decision_event: number } | undefined;
+    return row?.last_decision_event ?? 0;
+  }
+
+  setDecisionPointer(agent: string, eventId: number): void {
+    this.db
+      .prepare(
+        `INSERT INTO agent_state (agent, last_decision_event) VALUES (?, ?)
+         ON CONFLICT(agent) DO UPDATE SET last_decision_event = excluded.last_decision_event`
+      )
+      .run(agent, eventId);
+  }
 }
 
 export class EventRepo {

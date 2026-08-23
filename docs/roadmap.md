@@ -116,6 +116,33 @@ Exit criteria:
 - Malformed output produces a WARNING mail to the sender, loop continues
 - Restart sweeps orphaned sessions; dry-run regression stays green
 
+### Sprint 4 scope (2026-08-23)
+
+Goals:
+
+- **`lab.config.json`**: single config surface — budgets, cycle timeout,
+  escalation threshold, backoff curve, project root; defaults built-in,
+  file optional (guide §6)
+- **DECISIONS.md protocol** (architecture §2.4): DECISION mails are logged
+  as `decision_logged` events (SQLite = source of truth); every agent keeps
+  a read pointer (`agent_state` table, migration 002); new decisions since
+  the pointer are injected into the next situation report; pointer advances
+  after a successful cycle; DECISIONS.md rendered as a derived view
+- **Board ownership rules** (architecture §2.3): a task with an owner can
+  only be moved by its owner (orchestrator/human exempt); claiming an
+  unowned task via `active` + owner still allowed; violations logged as
+  `task_move_rejected`
+- **Phase 2 exit-criteria chaos suite**: repeated abrupt-termination
+  simulation (close DB mid-run at varying rounds), reopen + orphan sweep,
+  assert monotonic invariants (no mail/task loss, resume completes)
+
+Exit criteria:
+
+- Config overrides take effect (tested); absent file falls back to defaults
+- DECISION mail → visible to the other agent exactly once via pointer
+- Non-owner move rejected with audit event; claim flow unchanged
+- Chaos suite green across ≥3 random termination points; full suite green
+
 ## Phase 3 — Autonomy (Sprints 5–6)
 
 **Goal:** agents run without a script.

@@ -26,6 +26,7 @@ export interface CycleResult {
   reason?: string;
   timedOut?: boolean;
   productive?: boolean;
+  failed?: boolean;
 }
 
 const defaultUsage = () => ({ tokensIn: 120, tokensOut: 80 });
@@ -70,7 +71,7 @@ export async function runCycle(deps: OrchestratorDeps, agent: string, cycle: num
         actor: agent,
         payload: { sessionId: session.id, timeoutMs: err.ms },
       });
-      return { agent, status: 'done', sessionId: session.id, timedOut: true };
+      return { agent, status: 'done', sessionId: session.id, timedOut: true, failed: true };
     }
     // Malformed-output teaching loop (guide §4.2): the environment files a
     // WARNING back to the sender instead of dropping the failure silently.
@@ -89,7 +90,7 @@ export async function runCycle(deps: OrchestratorDeps, agent: string, cycle: num
       });
     }
     repos.events.append({ kind: 'cycle_failed', actor: agent, payload: { error: truncate(String(err), 300) } });
-    return { agent, status: 'done', sessionId: session.id, productive: false };
+    return { agent, status: 'done', sessionId: session.id, productive: false, failed: true };
   }
 
   commitActions(deps, agent, session.id, output);
@@ -103,6 +104,12 @@ export async function runCycle(deps: OrchestratorDeps, agent: string, cycle: num
     actor: agent,
     payload: { sessionId: session.id, mails: output.mails.length, taskMoves: output.taskMoves.length },
   });
+
+  // advance the DECISIONS.md read pointer — this agent is now current
+  const decisionEvents = repos.events.byKind('decision_logged');
+  if (decisionEvents.length) {
+    repos.state.setDecisionPointer(agent, decisionEvents[decisionEvents.length - 1]!.id);
+  }
 
   return { agent, status: 'done', sessionId: session.id, productive };
 }
@@ -141,6 +148,15 @@ function commitActions(deps: OrchestratorDeps, agent: string, sessionId: number,
       actor: agent,
       payload: { messageId: filed.id, to: m.to, type: m.type, subject: m.subject },
     });
+    // DECISIONS.md protocol: decisions enter the shared event log
+    if (m.type === 'DECISION') {
+      repos.events.append({
+        kind: 'decision_logged',
+        actor: agent,
+        payload: { from: agent, subject: m.subject, body: m.body, threadId: filed.thread_id },
+      });
+      repos.mail.markAnswered(filed.id);
+    }
   }
   for (const move of output.taskMoves) {
     try {

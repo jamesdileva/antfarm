@@ -9,6 +9,7 @@ import { OpenCodeDriver } from './drivers/opencode.js';
 import { Workspace, workspacePath } from './workspace.js';
 import { seedGoal } from './goal.js';
 import { recoverOrphans } from './recover.js';
+import { loadConfig, type LabConfig } from './config.js';
 
 export const PROJECT_ROOT = 'project';
 
@@ -20,16 +21,16 @@ const demoScripts = {
       summary: 'proposed MVP',
     },
     {
-      mails: [],
-      taskMoves: [{ taskId: 1, state: 'active', owner: 'agent-a' }],
+      mails: [{ to: 'agent-b', type: 'STATUS', subject: 'spec received', body: 'Starting backend work per your spec.' }],
+      taskMoves: [],
       summary: 'starting backend',
     },
   ],
   'agent-b': [
     {
-      mails: [{ to: 'agent-a', type: 'REVIEW', subject: 'Scope too broad', body: 'Agreed with notes MVP. Created task #1 for the spec.', priority: 3 }],
+      mails: [{ to: 'agent-a', type: 'DECISION', subject: 'Scope agreed: notes MVP', body: 'MVP is local markdown notes with full-text search. Task #1 tracks the spec.', priority: 3 }],
       taskMoves: [{ taskId: 1, state: 'active', owner: 'agent-b' }],
-      summary: 'reviewed, created task',
+      summary: 'reviewed, decided scope, claimed spec task',
     },
   ],
 };
@@ -55,14 +56,16 @@ async function init(): Promise<void> {
 }
 
 async function makeDeps(dbPath: string, live: boolean): Promise<OrchestratorDeps> {
-  mkdirSync(PROJECT_ROOT, { recursive: true });
+  const cfg: LabConfig = loadConfig();
+  const projectRoot = cfg.projectRoot;
+  mkdirSync(projectRoot, { recursive: true });
   const db = openDb(dbPath);
   const swept = recoverOrphans(db);
   if (swept > 0) console.log(`orphan recovery: swept ${swept} stale running session(s)`);
   const repos = createRepos(db);
 
   if (live) {
-    const workspace = new Workspace(workspacePath(PROJECT_ROOT));
+    const workspace = new Workspace(workspacePath(projectRoot));
     await workspace.ensureRepo();
     const drivers: OrchestratorDeps['drivers'] = {};
     for (const agent of ['agent-a', 'agent-b']) {
@@ -70,12 +73,13 @@ async function makeDeps(dbPath: string, live: boolean): Promise<OrchestratorDeps
     }
     return {
       repos,
-      budgets: new Budgets({ maxTokensPerCycle: 20_000, maxCyclesPerHour: 30 }),
+      budgets: new Budgets(cfg.budgets),
       drivers,
       agents: ['agent-a', 'agent-b'],
-      situation: { projectRoot: PROJECT_ROOT },
+      situation: { projectRoot },
       signals: async (agent) => ({ ownedTaskChanged: false, workspaceChanged: await workspace.poll(agent) }),
       onCycleDone: (agent) => workspace.markSeen(agent),
+      cycleTimeoutMs: cfg.cycleTimeoutMs,
       usageFor: () => ({ tokensIn: 0, tokensOut: 0 }),
     };
   }
@@ -85,7 +89,7 @@ async function makeDeps(dbPath: string, live: boolean): Promise<OrchestratorDeps
     budgets: new Budgets({ maxTokensPerCycle: 2000, maxCyclesPerHour: 30 }),
     drivers: { 'agent-a': new FakeDriver(demoScripts), 'agent-b': new FakeDriver(demoScripts) },
     agents: ['agent-a', 'agent-b'],
-    situation: { projectRoot: PROJECT_ROOT },
+    situation: { projectRoot },
   };
 }
 
@@ -101,7 +105,7 @@ async function run(): Promise<void> {
     process.exit(1);
   }
 
-  const deps = await makeDeps(join(PROJECT_ROOT, 'lab.db'), live);
+  const deps = await makeDeps(join(loadConfig().projectRoot, 'lab.db'), live);
 
   // Seed one proposed task so scripted moves have a target (dry-run only).
   if (!live && deps.repos.tasks.list().length === 0) {

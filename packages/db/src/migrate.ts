@@ -7,6 +7,11 @@ const MIGRATIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), 'migrations
 
 export type Db = Database.Database;
 
+const MIGRATIONS: Array<{ version: number; file: string }> = [
+  { version: 1, file: '001_init.sql' },
+  { version: 2, file: '002_agent_state.sql' },
+];
+
 export function openDb(path: string): Db {
   const db = new Database(path);
   db.pragma('journal_mode = WAL');
@@ -16,12 +21,13 @@ export function openDb(path: string): Db {
 }
 
 function migrate(db: Db): void {
-  const version = (db.pragma('user_version', { simple: true }) as number) ?? 0;
-  if (version < 1) {
-    const sql = readFileSync(join(MIGRATIONS_DIR, '001_init.sql'), 'utf8');
+  const current = (db.pragma('user_version', { simple: true }) as number) ?? 0;
+  for (const m of MIGRATIONS) {
+    if (current >= m.version) continue;
+    const sql = readFileSync(join(MIGRATIONS_DIR, m.file), 'utf8');
     const apply = db.transaction(() => {
       db.exec(sql);
-      db.pragma('user_version = 1');
+      db.pragma(`user_version = ${m.version}`);
     });
     apply();
   }
