@@ -1,4 +1,4 @@
-import { createOpencodeClient } from '@opencode-ai/sdk';
+import { createOpencode, createOpencodeClient } from '@opencode-ai/sdk';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { ActionsOutput, type ActionsOutputT } from '../actions.js';
 import type { AgentDriver, DriverContext } from '../driver.js';
@@ -35,6 +35,45 @@ export interface AssistantInfo {
   tokens?: Record<string, number>;
   cost?: number;
   [k: string]: unknown;
+}
+
+export interface HealthClient {
+  global: {
+    health(): Promise<{ data: { healthy: boolean; version?: string } }>;
+  };
+}
+
+/**
+ * Spawns a managed OpenCode server + client (createOpencode) instead of
+ * assuming one is already listening. Caller owns the returned close().
+ */
+export async function createManagedClient(opts?: {
+  hostname?: string;
+  port?: number;
+  timeoutMs?: number;
+}): Promise<{ client: OpencodeSessionClient; health: HealthClient; close: () => void }> {
+  const opencode = await createOpencode({
+    hostname: opts?.hostname ?? '127.0.0.1',
+    port: opts?.port ?? 4096,
+    timeout: opts?.timeoutMs ?? 15_000,
+  });
+  const client = opencode.client as unknown as OpencodeSessionClient & HealthClient;
+  return { client, health: client, close: () => opencode.server.close() };
+}
+
+/** Verifies the server answers before burning a cycle on it. */
+export async function assertServerHealthy(health: HealthClient): Promise<string> {
+  try {
+    const res = await health.global.health();
+    if (!res.data.healthy) throw new Error('reported unhealthy');
+    return res.data.version ?? 'unknown version';
+  } catch (err) {
+    throw new Error(
+      `opencode server unreachable (${(err as Error).message}). ` +
+        `antfarm spawns its own via createOpencode() — if you disabled that, ` +
+        `start one manually with \`opencode serve --port 4096\`.`
+    );
+  }
 }
 
 export interface OpenCodeDriverOptions {

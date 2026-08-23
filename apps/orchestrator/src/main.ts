@@ -5,7 +5,7 @@ import { Budgets } from './budgets.js';
 import { runLoop } from './loop.js';
 import type { OrchestratorDeps } from './cycle.js';
 import { FakeDriver } from './drivers/fake.js';
-import { OpenCodeDriver } from './drivers/opencode.js';
+import { OpenCodeDriver, createManagedClient, assertServerHealthy } from './drivers/opencode.js';
 import { Workspace, workspacePath } from './workspace.js';
 import { seedGoal } from './goal.js';
 import { recoverOrphans } from './recover.js';
@@ -66,11 +66,28 @@ async function makeDeps(dbPath: string, live: boolean): Promise<OrchestratorDeps
   const repos = createRepos(db);
 
   if (live) {
+    // Spawn a managed OpenCode server (createOpencode) — do NOT assume an
+    // external one is listening (S7 rerun lesson: "fetch failed").
+    const managed = await createManagedClient();
+    const version = await assertServerHealthy(managed.health);
+    console.log(`opencode server up (v${version}) on managed port`);
+    const shutdown = (): void => {
+      try {
+        managed.close();
+      } catch {
+        /* best effort */
+      }
+    };
+    process.once('exit', shutdown);
+    process.once('SIGINT', () => process.exit(0));
+    process.once('SIGBREAK', () => process.exit(0));
+
     const workspace = new Workspace(workspacePath(projectRoot));
     await workspace.ensureRepo();
     const drivers: OrchestratorDeps['drivers'] = {};
     for (const agent of ['agent-a', 'agent-b']) {
       drivers[agent] = new OpenCodeDriver({
+        client: managed.client,
         driveSheet: OpenCodeDriver.sheetFor(agent),
         personality: cfg.personalities[agent],
       });
