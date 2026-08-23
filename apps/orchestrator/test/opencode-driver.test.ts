@@ -7,15 +7,16 @@ import {
   CRITIC,
   renderDrivePrompt,
 } from '../src/drives.js';
-import { OpenCodeDriver, extractUsage } from '../src/drivers/opencode.js';
+import { OpenCodeDriver, extractJson, extractUsage } from '../src/drivers/opencode.js';
 import type { OpencodeSessionClient } from '../src/drivers/opencode.js';
 
 function fakeClient(response: {
   structured?: unknown;
+  text?: string;
   error?: { name?: string; message?: string };
   tokens?: Record<string, number>;
-}): { client: OpencodeSessionClient; calls: { created: string[]; prompts: string[] } } {
-  const calls = { created: [] as string[], prompts: [] as string[] };
+}): { client: OpencodeSessionClient; calls: { created: string[]; prompts: string[]; systems: string[] } } {
+  const calls = { created: [] as string[], prompts: [] as string[], systems: [] as string[] };
   const client: OpencodeSessionClient = {
     session: {
       create: async (args) => {
@@ -25,14 +26,13 @@ function fakeClient(response: {
       },
       prompt: async (args) => {
         calls.prompts.push(args.body.parts[0]!.text);
-        expect(args.body.format?.type).toBe('json_schema');
+        calls.systems.push(args.body.system ?? '');
+        expect(args.body.system).toContain('RESPONSE FORMAT');
+        const text = response.text ?? JSON.stringify(response.structured ?? {});
         return {
           data: {
-            info: {
-              structured_output: response.structured,
-              error: response.error,
-              tokens: response.tokens,
-            },
+            info: { error: response.error, tokens: response.tokens },
+            parts: [{ type: 'text', text }],
           },
         };
       },
@@ -87,21 +87,30 @@ describe('OpenCodeDriver', () => {
     expect(calls.created).toEqual(['agent-a · cycle 1']);
     expect(actions.mails[0]!.subject).toBe('looks good');
     expect(actions.taskMoves[0]!.taskId).toBe(3);
-    expect(calls.prompts[0]).toContain('PROJECT GOAL');
+    // drive sheet + context go in system; situation is the user message
+    expect(calls.systems[0]).toContain('Builder');
+    expect(calls.systems[0]).toContain('PROJECT GOAL');
     expect(calls.prompts[0]).toContain('SITUATION REPORT');
-    expect(calls.prompts[0]).toContain('Builder'); // drive sheet included
   });
 
-  it('throws on StructuredOutputError instead of returning garbage', async () => {
-    const { client } = fakeClient({ error: { name: 'StructuredOutputError', message: 'nope' } });
+  it('throws on assistant errors instead of parsing garbage', async () => {
+    const { client } = fakeClient({ error: { name: 'ProviderAuthError', message: 'no key' } });
     const driver = new OpenCodeDriver({ client, driveSheet: CRITIC });
-    await expect(driver.run({ agent: 'agent-b', cycle: 1, situation: 's' })).rejects.toThrow(/structured output/i);
+    await expect(driver.run({ agent: 'agent-b', cycle: 1, situation: 's' })).rejects.toThrow(/assistant error/i);
   });
 
   it('rejects malformed agent output via schema validation', async () => {
     const { client } = fakeClient({ structured: { mails: [{ to: 'agent-b', type: 'GOSSIP', subject: '', body: '' }] } });
     const driver = new OpenCodeDriver({ client, driveSheet: BUILDER });
     await expect(driver.run({ agent: 'agent-a', cycle: 1, situation: 's' })).rejects.toThrow();
+  });
+
+  it('extracts JSON from fenced and prose-wrapped responses', () => {
+    expect(extractJson('```json\n{"summary":"x"}\n```')).toEqual({ summary: 'x' });
+    expect(extractJson('Here are my actions:\n{"mails":[],"summary":"done"} hope that helps!'))
+      .toEqual({ mails: [], summary: 'done' });
+    expect(() => extractJson('no json here at all')).toThrow(/no JSON object/);
+    expect(() => extractJson('{"broken": ')).toThrow(/no JSON object|not valid JSON/);
   });
 
   it('extracts usage defensively across shapes', () => {

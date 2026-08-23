@@ -1,5 +1,4 @@
-import { createOpencode, createOpencodeClient } from '@opencode-ai/sdk';
-import { zodToJsonSchema } from 'zod-to-json-schema';
+import { createOpencode } from '@opencode-ai/sdk';
 import { ActionsOutput, type ActionsOutputT } from '../actions.js';
 import type { AgentDriver, DriverContext } from '../driver.js';
 import {
@@ -23,9 +22,15 @@ export interface OpencodeSessionClient {
       path: { id: string };
       body: {
         parts: Array<{ type: 'text'; text: string }>;
-        format?: { type: 'json_schema'; schema: object; retryCount?: number };
+        /** drive sheet + personality — verified present on installed SDK */
+        system?: string;
       };
-    }): Promise<{ data: { info: AssistantInfo } }>;
+    }): Promise<{
+      data: {
+        info: AssistantInfo;
+        parts: Array<{ type: string; text?: string }>;
+      };
+    }>;
   };
 }
 
@@ -51,29 +56,46 @@ export async function createManagedClient(opts?: {
   hostname?: string;
   port?: number;
   timeoutMs?: number;
-}): Promise<{ client: OpencodeSessionClient; health: HealthClient; close: () => void }> {
+}): Promise<{ client: OpencodeSessionClient; serverUrl: string; close: () => void }> {
   const opencode = await createOpencode({
     hostname: opts?.hostname ?? '127.0.0.1',
     port: opts?.port ?? 4096,
     timeout: opts?.timeoutMs ?? 15_000,
   });
-  const client = opencode.client as unknown as OpencodeSessionClient & HealthClient;
-  return { client, health: client, close: () => opencode.server.close() };
+  const client = opencode.client as unknown as OpencodeSessionClient;
+  return { client, serverUrl: opencode.server.url, close: () => opencode.server.close() };
 }
 
-/** Verifies the server answers before burning a cycle on it. */
-export async function assertServerHealthy(health: HealthClient): Promise<string> {
-  try {
-    const res = await health.global.health();
-    if (!res.data.healthy) throw new Error('reported unhealthy');
-    return res.data.version ?? 'unknown version';
-  } catch (err) {
-    throw new Error(
-      `opencode server unreachable (${(err as Error).message}). ` +
-        `antfarm spawns its own via createOpencode() — if you disabled that, ` +
-        `start one manually with \`opencode serve --port 4096\`.`
-    );
+/**
+ * Verifies the server answers before burning a cycle on it.
+ * Uses raw HTTP — the SDK's health surface varies across versions
+ * (v1 client has no global.health(); ground truth beats generated types).
+ */
+export async function assertServerHealthy(baseUrl: string): Promise<string> {
+  const candidates = [`${baseUrl.replace(/\/$/, '')}/global/health`, `${baseUrl.replace(/\/$/, '')}/health`];
+  let lastErr = 'unknown error';
+  for (const url of candidates) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+      if (!res.ok) {
+        lastErr = `${url} -> ${res.status}`;
+        continue;
+      }
+      const body = (await res.json().catch(() => ({}))) as { healthy?: boolean; version?: string };
+      if (body.healthy === false) {
+        lastErr = `${url} reported unhealthy`;
+        continue;
+      }
+      return body.version ?? 'unknown version';
+    } catch (err) {
+      lastErr = `${url} -> ${(err as Error).message}`;
+    }
   }
+  throw new Error(
+    `opencode server unreachable (${lastErr}). antfarm spawns its own via ` +
+      `createOpencode() — if you disabled that, start one manually with ` +
+      `\`opencode serve --port 4096\`.`
+  );
 }
 
 export interface OpenCodeDriverOptions {
@@ -97,9 +119,10 @@ export class OpenCodeDriver implements AgentDriver {
 
   constructor(opts: OpenCodeDriverOptions & { client?: OpencodeSessionClient }) {
     this.opts = opts;
-    this.client =
-      opts.client ??
-      (createOpencodeClient({ baseUrl: opts.baseUrl ?? 'http://127.0.0.1:4096' }) as unknown as OpencodeSessionClient);
+    if (!opts.client) {
+      throw new Error('OpenCodeDriver requires a client — use createManagedClient() in live mode');
+    }
+    this.client = opts.client;
     this.sheet = opts.driveSheet ?? SHEETS.agent;
   }
 
@@ -121,12 +144,18 @@ export class OpenCodeDriver implements AgentDriver {
     });
     const sessionId = created.data.id;
 
-    const promptText = [
+    // The installed SDK has no json_schema structured output on prompt;
+    // we instruct-for-JSON and validate with zod (teaching loop handles
+    // malformed responses — guide §4.2).
+    const systemText = [
       renderDrivePrompt(this.sheet, resolvePersonality(this.opts.personality)),
       '',
-      this.opts.context ? this.opts.context() : '',
+      'RESPONSE FORMAT (mandatory): your final message must be ONLY a JSON',
+      'object, no prose before or after, matching exactly:',
+      '{"mails":[{"to":"agent-a|agent-b","type":"QUESTION|IDEA|TASK|REVIEW|WARNING|DECISION|STATUS|HELP","subject":"≤120 chars","body":"...","priority":1-9}],"taskMoves":[{"taskId":number,"state":"proposed|active|blocked|done|dropped","owner":"agent id or null"}],"memoryUpdate":"compact working memory or empty string","summary":"one line"}',
+      'Omit fields you do not need. No markdown fences.',
       '',
-      ctx.situation,
+      this.opts.context ? this.opts.context() : '',
     ]
       .filter(Boolean)
       .join('\n');
@@ -134,21 +163,37 @@ export class OpenCodeDriver implements AgentDriver {
     const result = await this.client.session.prompt({
       path: { id: sessionId },
       body: {
-        parts: [{ type: 'text', text: promptText }],
-        format: {
-          type: 'json_schema',
-          schema: zodToJsonSchema(ActionsOutput, { target: 'openAi' }) as object,
-          retryCount: 2,
-        },
+        parts: [{ type: 'text', text: ctx.situation }],
+        system: systemText,
       },
     });
 
     const info = result.data.info;
-    if (info.error?.name === 'StructuredOutputError') {
-      throw new Error(`structured output failed after retries: ${info.error.message ?? 'unknown'}`);
+    if (info.error) {
+      throw new Error(`assistant error: ${info.error.name ?? 'unknown'}: ${info.error.message ?? ''}`);
     }
 
-    return ActionsOutput.parse(info.structured_output);
+    const text = result.data.parts
+      .filter((p) => p.type === 'text')
+      .map((p) => p.text ?? '')
+      .join('\n');
+    return ActionsOutput.parse(extractJson(text));
+  }
+}
+
+/** Pull a JSON object out of model text: fenced block first, then brace scan. */
+export function extractJson(text: string): unknown {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  const candidate = (fenced?.[1] ?? text).trim();
+  const start = candidate.indexOf('{');
+  const end = candidate.lastIndexOf('}');
+  if (start === -1 || end === -1 || end <= start) {
+    throw new Error(`no JSON object found in response: ${text.slice(0, 200)}`);
+  }
+  try {
+    return JSON.parse(candidate.slice(start, end + 1));
+  } catch (err) {
+    throw new Error(`response was not valid JSON: ${(err as Error).message}`);
   }
 }
 

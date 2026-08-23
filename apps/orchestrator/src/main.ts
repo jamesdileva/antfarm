@@ -69,8 +69,8 @@ async function makeDeps(dbPath: string, live: boolean): Promise<OrchestratorDeps
     // Spawn a managed OpenCode server (createOpencode) — do NOT assume an
     // external one is listening (S7 rerun lesson: "fetch failed").
     const managed = await createManagedClient();
-    const version = await assertServerHealthy(managed.health);
-    console.log(`opencode server up (v${version}) on managed port`);
+    const version = await assertServerHealthy(managed.serverUrl);
+    console.log(`opencode server up (v${version}) at ${managed.serverUrl}`);
     const shutdown = (): void => {
       try {
         managed.close();
