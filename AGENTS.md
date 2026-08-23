@@ -66,6 +66,7 @@ the subject names the phase goal.
 | 2026-08-23 | S4 | lab.config.json, DECISIONS.md protocol (event log + per-agent read pointers), board ownership enforcement, chaos suite (random kill points), scheduler stall detection; Phase 2 exit criteria met | 38/38 pass · build green · dry-run regression green | 3096619 |
 | 2026-08-23 | S5 | MEMORY.md compaction protocol (current + archive + file mirror, injected per cycle), stuck-task sweep to blocked (once, windowed), review-livelock contested resolution with rotating authority | 44/44 pass · build green · dry-run regression green | 68d0a58 |
 | 2026-08-23 | S6 | Build/test harness (events + situation summaries), Mode 2 selection gate (no activation pre-decision), unattended-run report polish; live overnight validation pending first real session | 51/51 pass · build green · dry-run regression green | 9d7b6b1 |
+| 2026-08-23 | S7 | lab reset (fixes live-run state contamination), failure-visible run summaries, observer CLI (view builder + ANSI whiteboard), personality overlays as config; first live run happened but was invalidated by stale DB — rerun needed | 56/56 pass · build green · dry-run green post-reset | 97a9cf3 |
 
 <!--
 Add one row per sprint at completion:
