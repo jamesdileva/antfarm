@@ -60,6 +60,7 @@ the subject names the phase goal.
 | Date | Sprint | Summary | Tests | Commit |
 |------|--------|---------|-------|--------|
 | 2026-08-23 | pre-1 | Docs authored: architecture, implementation guide, roadmap, areas/nursery design; repo initialized | n/a (docs only) | — |
+| 2026-08-23 | S1 | Orchestrator skeleton: SQLite schema/repos/events, dry-run loop w/ scripted agents, wake policy, budgets, task state machine; exit criteria met | 11/11 pass · build green · dry-run 3 cycles | 28167a8 |
 
 <!--
 Add one row per sprint at completion:
