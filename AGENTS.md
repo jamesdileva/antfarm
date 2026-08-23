@@ -64,6 +64,7 @@ the subject names the phase goal.
 | 2026-08-23 | S2 | Real OpenCode SDK driver (structured output via json_schema), drive sheets (idea-neutral), Mode 1 goal seeding, workspace git wake signals; live smoke gated by ANTFARM_LIVE_SMOKE=1 | 21/21 pass · build green · dry-run regression green | 2d064b4 |
 | 2026-08-23 | S3 | Environment hardening: wall-clock cycle timeouts w/ abort hook, mail threads + escalation (once per thread), malformed-output teaching WARNING (churn-guarded), idle backoff (mail overrides), orphan recovery sweep | 30/30 pass · build green · dry-run regression green | d6ec06c |
 | 2026-08-23 | S4 | lab.config.json, DECISIONS.md protocol (event log + per-agent read pointers), board ownership enforcement, chaos suite (random kill points), scheduler stall detection; Phase 2 exit criteria met | 38/38 pass · build green · dry-run regression green | 3096619 |
+| 2026-08-23 | S5 | MEMORY.md compaction protocol (current + archive + file mirror, injected per cycle), stuck-task sweep to blocked (once, windowed), review-livelock contested resolution with rotating authority | 44/44 pass · build green · dry-run regression green | 68d0a58 |
 
 <!--
 Add one row per sprint at completion:
