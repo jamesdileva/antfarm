@@ -24,6 +24,8 @@ export const TaskMoveAction = z.object({
 export const ActionsOutput = z.object({
   mails: z.array(MailAction).default([]),
   taskMoves: z.array(TaskMoveAction).default([]),
+  /** compacted working memory (≤ ~20 lines); empty string = no update */
+  memoryUpdate: z.string().max(4000).default(''),
   summary: z.string().default(''),
 });
 

@@ -1,5 +1,5 @@
 import type { Db } from './migrate.js';
-import { AgentStateRepo, EventRepo, MailRepo, SessionRepo, TaskRepo } from './repositories.js';
+import { AgentStateRepo, EventRepo, MailRepo, MemoryRepo, SessionRepo, TaskRepo } from './repositories.js';
 
 export * from './migrate.js';
 export * from './repositories.js';
@@ -10,6 +10,7 @@ export interface Repos {
   sessions: SessionRepo;
   events: EventRepo;
   state: AgentStateRepo;
+  memory: MemoryRepo;
 }
 
 export function createRepos(db: Db): Repos {
@@ -19,6 +20,7 @@ export function createRepos(db: Db): Repos {
     sessions: new SessionRepo(db),
     events: new EventRepo(db),
     state: new AgentStateRepo(db),
+    memory: new MemoryRepo(db),
   };
 }
 

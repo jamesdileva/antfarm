@@ -143,6 +143,34 @@ Exit criteria:
 - Non-owner move rejected with audit event; claim flow unchanged
 - Chaos suite green across ≥3 random termination points; full suite green
 
+### Sprint 5 scope (2026-08-23)
+
+Goals:
+
+- **MEMORY.md compaction protocol** (architecture §2.4): structured output
+  gains `memoryUpdate`; orchestrator persists current memory per agent
+  (`memory_current`, migration 003), archives prior versions
+  (`memory_archive`), mirrors to `project/<agent>/MEMORY.md`, and injects
+  the memory block into subsequent situation reports
+- **Stuck-task detection** (architecture §3.2): an `active` task with no
+  board movement inside a sliding window of recent cycles is swept to
+  `blocked` by the platform with a `task_stuck` audit event
+- **Review-livelock escalation** (architecture §3.2): a REVIEW thread that
+  exceeds N rounds without a DECISION is auto-resolved as `contested`,
+  with resolution authority rotating between agents (odd/even rounds)
+
+Out of scope (→ Sprint 6): build/test harness, Mode 2 brainstorm/decide
+protocol, first unattended constrained-autonomy run.
+
+Exit criteria:
+
+- Second memory update archives the first; latest memory appears verbatim
+  in the agent's next situation report
+- Untouched active task flips to `blocked` exactly once with audit trail;
+  recently-moved tasks are left alone
+- A 4-round REVIEW thread produces one contested-decision event, never two;
+  resolver rotation is deterministic
+
 ## Phase 3 — Autonomy (Sprints 5–6)
 
 **Goal:** agents run without a script.

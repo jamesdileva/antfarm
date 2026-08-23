@@ -104,6 +104,10 @@ export class MailRepo {
       .all(threadId) as MailRow[];
   }
 
+  byKind(type: MessageType): MailRow[] {
+    return this.db.prepare('SELECT * FROM messages WHERE type = ? ORDER BY id').all(type) as MailRow[];
+  }
+
   /**
    * Threads that were delivered but never answered by the recipient.
    * A thread is answered when a later message in it was filed by the
@@ -288,6 +292,45 @@ export class AgentStateRepo {
          ON CONFLICT(agent) DO UPDATE SET last_decision_event = excluded.last_decision_event`
       )
       .run(agent, eventId);
+  }
+}
+
+/** MEMORY.md compaction protocol — current + full archive in SQLite. */
+export class MemoryRepo {
+  constructor(private db: Db) {}
+
+  current(agent: string): string | null {
+    const row = this.db
+      .prepare('SELECT content FROM memory_current WHERE agent = ?')
+      .get(agent) as { content: string } | undefined;
+    return row?.content ?? null;
+  }
+
+  /** Replaces current memory; the previous version lands in the archive. */
+  save(agent: string, content: string): void {
+    const now = new Date().toISOString();
+    const tx = this.db.transaction(() => {
+      const existing = this.current(agent);
+      if (existing !== null) {
+        this.db
+          .prepare('INSERT INTO memory_archive (agent, content, archived_at) VALUES (?, ?, ?)')
+          .run(agent, existing, now);
+      }
+      this.db
+        .prepare(
+          `INSERT INTO memory_current (agent, content, updated_at) VALUES (?, ?, ?)
+           ON CONFLICT(agent) DO UPDATE SET content = excluded.content,
+           updated_at = excluded.updated_at`
+        )
+        .run(agent, content, now);
+    });
+    tx();
+  }
+
+  archiveOf(agent: string): Array<{ id: number; content: string; archived_at: string }> {
+    return this.db
+      .prepare('SELECT id, content, archived_at FROM memory_archive WHERE agent = ? ORDER BY id DESC')
+      .all(agent) as Array<{ id: number; content: string; archived_at: string }>;
   }
 }
 

@@ -42,11 +42,13 @@ export function buildSituation(repos: Repos, agent: string, ctx: SituationContex
 
   const goal = readGoal(ctx.projectRoot);
   const decisions = decisionsSince(repos, agent);
+  const memory = repos.memory.current(agent);
 
   const lines = [
     `SITUATION REPORT — ${agent}`,
     '',
     ...(goal ? ['PROJECT GOAL (authored by the human; treat as the mission):', goal, ''] : []),
+    ...(memory ? ['YOUR MEMORY.md (your own compacted working memory):', memory, ''] : []),
     ...(ctx.workspaceSummary ? ['Workspace:', `  ${ctx.workspaceSummary}`, ''] : []),
     'Unread mail:',
     ...(mail.length
@@ -59,7 +61,9 @@ export function buildSituation(repos: Repos, agent: string, ctx: SituationContex
     'New decisions since your last review:',
     ...(decisions.lines.length ? decisions.lines : ['  (none)']),
     '',
-    'Answer with structured actions (mails to file, task moves, summary).',
+    'Before answering, consider updating your memoryUpdate (compact working',
+    'memory: current goal, open threads, key learnings — ≤20 lines).',
+    'Answer with structured actions (mails, task moves, memoryUpdate, summary).',
   ];
   return lines.join('\n');
 }

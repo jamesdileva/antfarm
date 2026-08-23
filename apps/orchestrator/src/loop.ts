@@ -1,13 +1,17 @@
 import type { OrchestratorDeps } from './cycle.js';
 import { runCycle } from './cycle.js';
 import { shouldWake } from './wake.js';
-import { escalateStale, type EscalationConfig } from './escalation.js';
+import { escalateStale, escalateReviewLivelock, type EscalationConfig } from './escalation.js';
 import { Backoff } from './backoff.js';
+import { detectStuckTasks } from './stuck.js';
+import { loadConfig } from './config.js';
 
 export interface LoopOptions {
   maxRounds?: number;
-  /** mail escalation thresholds (default: stale after 1h) */
+  /** mail escalation thresholds (default: config/1h) */
   escalation?: Pick<EscalationConfig, 'staleAfterMs'>;
+  /** active task stuck after this many movement-free recent cycles (default 6) */
+  stuckWindow?: number;
 }
 
 export interface LoopReport {
@@ -15,6 +19,8 @@ export interface LoopReport {
   cyclesRun: number;
   skipped: string[];
   escalated: number;
+  stucked: number[];
+  contested: number;
 }
 
 const noSignals = { ownedTaskChanged: false, workspaceChanged: false };
@@ -31,7 +37,8 @@ export async function runLoop(deps: OrchestratorDeps, opts: LoopOptions = {}): P
   const cycleCounters = new Map<string, number>(agents.map((a) => [a, 0]));
   const lastCycleAt = new Map<string, number>();
   const backoff = new Backoff(500, 60_000);
-  const report: LoopReport = { rounds: 0, cyclesRun: 0, skipped: [], escalated: 0 };
+  const report: LoopReport = { rounds: 0, cyclesRun: 0, skipped: [], escalated: 0, stucked: [], contested: 0 };
+  const cfg = loadConfig();
 
   for (let round = 1; round <= maxRounds; round++) {
     report.rounds = round;
@@ -80,8 +87,12 @@ export async function runLoop(deps: OrchestratorDeps, opts: LoopOptions = {}): P
     }
 
     report.escalated += escalateStale(repos, {
-      staleAfterMs: opts.escalation?.staleAfterMs ?? 3_600_000,
+      staleAfterMs: opts.escalation?.staleAfterMs ?? cfg.escalationStaleAfterMs,
     }).length;
+    report.stucked.push(
+      ...detectStuckTasks(repos, { windowSize: opts.stuckWindow ?? 6 })
+    );
+    report.contested += escalateReviewLivelock(repos, { maxReviewRounds: 4 }).length;
 
     // Stall detection: a full round with zero successful cycles means the
     // inputs are deterministic and repeating them changes nothing.

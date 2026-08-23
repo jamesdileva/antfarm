@@ -3,6 +3,7 @@ import type { AgentDriver } from './driver.js';
 import type { ActionsOutputT } from './actions.js';
 import type { Budgets } from './budgets.js';
 import { buildSituation, type SituationContext } from './situation.js';
+import { applyMemoryUpdate } from './memory.js';
 
 export interface OrchestratorDeps {
   repos: Repos;
@@ -141,6 +142,7 @@ function driverGoal(deps: OrchestratorDeps, agent: string): string {
 
 function commitActions(deps: OrchestratorDeps, agent: string, sessionId: number, output: ActionsOutputT): void {
   const { repos } = deps;
+  applyMemoryUpdate(repos, deps.situation?.projectRoot ?? 'project', agent, output.memoryUpdate);
   for (const m of output.mails) {
     const filed = repos.mail.enqueue(agent, m);
     repos.events.append({

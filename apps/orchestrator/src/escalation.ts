@@ -6,6 +6,11 @@ export interface EscalationConfig {
   now?: () => number;
 }
 
+export interface LivelockConfig {
+  /** REVIEW rounds without a DECISION before a thread is contested */
+  maxReviewRounds: number;
+}
+
 /**
  * Livelock guard (architecture §3.2): a question that sits unanswered
  * escalates to an orchestrator WARNING — exactly once per thread.
@@ -45,4 +50,60 @@ export function escalateStale(repos: Repos, cfg: EscalationConfig): MailRow[] {
     escalated.push(root);
   }
   return escalated;
+}
+
+export interface ContestedThread {
+  threadId: string;
+  rounds: number;
+  resolver: string;
+}
+
+/**
+ * Review-livelock guard (architecture §3.2): a REVIEW thread that exceeds
+ * maxReviewRounds without a DECISION is auto-resolved as `contested` —
+ * resolution authority rotates between agents by round parity. Fires at
+ * most once per thread.
+ */
+export function escalateReviewLivelock(
+  repos: Repos,
+  cfg: LivelockConfig & { agents?: [string, string] }
+): ContestedThread[] {
+  const [first, second] = cfg.agents ?? ['agent-a', 'agent-b'];
+  const reviews = repos.mail.byKind('REVIEW');
+  const threads = new Map<string, number>();
+  for (const m of reviews) {
+    threads.set(m.thread_id, (threads.get(m.thread_id) ?? 0) + 1);
+  }
+
+  const contested: ContestedThread[] = [];
+  for (const [threadId, rounds] of threads) {
+    if (rounds < cfg.maxReviewRounds) continue;
+    const hasDecision = repos.mail
+      .byThread(threadId)
+      .some((m) => m.type === 'DECISION');
+    const alreadyContested = repos.events
+      .byKind('thread_contested')
+      .some((e) => (JSON.parse(e.payload) as { threadId: string }).threadId === threadId);
+    if (hasDecision || alreadyContested) continue;
+
+    const resolver = rounds % 2 === 0 ? first : second;
+    const root = repos.mail.byThread(threadId)[0];
+    repos.events.append({
+      kind: 'decision_logged',
+      actor: resolver,
+      payload: {
+        from: resolver,
+        subject: `[contested, auto-resolved by ${resolver}] ${root?.subject ?? threadId}`,
+        body: `Review thread stalled after ${rounds} REVIEW rounds without a decision; rotated authority resolved it.`,
+        threadId,
+      },
+    });
+    repos.events.append({
+      kind: 'thread_contested',
+      actor: 'orchestrator',
+      payload: { threadId, rounds, resolver },
+    });
+    contested.push({ threadId, rounds, resolver });
+  }
+  return contested;
 }
