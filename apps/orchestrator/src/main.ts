@@ -163,7 +163,10 @@ async function run(): Promise<void> {
     process.exit(1);
   }
 
-  const deps = await makeDeps(join(loadConfig().projectRoot, 'lab.db'), live);
+  // Isolation rule: dry-run NEVER shares a database with live runs —
+  // demo fixtures must not leak into real experiments (S8 lesson).
+  const dbName = live ? 'lab.db' : 'lab-dryrun.db';
+  const deps = await makeDeps(join(loadConfig().projectRoot, dbName), live);
 
   // Seed one proposed task so scripted moves have a target (dry-run only).
   if (!live && deps.repos.tasks.list().length === 0) {
