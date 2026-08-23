@@ -228,6 +228,36 @@ Exit criteria:
 - Observer view builder tested against a seeded DB
 - Personality overlays render in prompts; suite fully green
 
+### Sprint 8 scope (2026-08-23)
+
+First clean live validation happened during the Sprint 7 window
+(2026-08-23): fresh lab → kickoff mail → 3 cycles, 1 DECISION (agents chose
+a markdown notes app unprompted), harness ran, zero failed sessions. Mode 2
+machinery confirmed against real OpenCode.
+
+Goals:
+
+- **Web dashboard** (`apps/dashboard`): dependency-free Node HTTP server;
+  `GET /api/view` serves the same `ObserverView` JSON the CLI uses (shared
+  via `@antfarm/observer-cli` main export); single-page whiteboard polls
+  every second. Polling chosen over SSE for v0 — no new runtime deps,
+  Sentinel-safe; SSE upgrade deferred
+- **Sentinel preflight** (integration.md §7): fresh-clone `npm install`
+  unattended, bare-shell `startup`/`test`/`build` extraction verified,
+  headless test pass
+- **Electron packaging: explicitly deferred** — the dashboard is a local
+  dev tool, not a shipped product; packaging adds electron-builder weight
+  for no current tester value. Revisit when a Sentinel DOM feature-tester
+  is actually wanted (§5 recipe applies then)
+
+Exit criteria:
+
+- `npm run dashboard` serves the live lab state at localhost; view JSON
+  identical to CLI's
+- Preflight checklist §7 passes except packaged-exe item (N/A while deferral
+  stands)
+- Full suite green
+
 ## Phase 3 — Autonomy (Sprints 5–6)
 
 **Goal:** agents run without a script.
