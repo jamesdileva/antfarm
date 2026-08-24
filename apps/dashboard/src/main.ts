@@ -1,4 +1,4 @@
-import { createServer, type IncomingMessage, type ServerResponse, type Server } from 'node:http';
+﻿import { createServer, type IncomingMessage, type ServerResponse, type Server } from 'node:http';
 import { existsSync } from 'node:fs';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -15,7 +15,25 @@ export function labDbPath(): string {
 const esc = (s: unknown): string =>
   String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-/** Route handler — factored out for tests. */
+function emptyView(): ObserverView & { fresh: boolean } {
+  return {
+    fresh: true,
+    agents: [
+      { agent: 'agent-a', status: 'never run', lastSession: '', cycles: 0 },
+      { agent: 'agent-b', status: 'never run', lastSession: '', cycles: 0 },
+    ],
+    board: [],
+    taskCounts: {},
+    latestMail: [],
+    checks: { build: 'not run yet', test: 'not run yet' },
+    recentEvents: [],
+    decisions: 0,
+    usage: [],
+    recentSessions: [],
+  };
+}
+
+/** Route handler â€” factored out for tests. */
 export function handle(dbPath: string, configPath = join(antfarmHome(), 'lab.config.json')): (req: IncomingMessage, res: ServerResponse) => void {
   return (req, res) => {
     const url = (req.url ?? '/').split('?')[0]!;
@@ -45,10 +63,11 @@ export function handle(dbPath: string, configPath = join(antfarmHome(), 'lab.con
       return;
     }
     if (url === '/api/view') {
-      // better-sqlite3 would happily create an empty db — refuse instead
+      // Fresh install: no lab yet â€” return an empty view with a hint instead
+      // of an error. Starting any colony creates the DB (better-sqlite3).
       if (!existsSync(dbPath)) {
-        res.writeHead(503, { 'content-type': 'application/json' });
-        res.end(JSON.stringify({ error: `no lab database at ${dbPath}` }));
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify(emptyView()));
         return;
       }
       try {
@@ -82,7 +101,7 @@ export function handle(dbPath: string, configPath = join(antfarmHome(), 'lab.con
           db.close();
           res.write(`data: ${JSON.stringify({ totalEvents: row.n })}\n\n`);
         } catch {
-          /* db busy between writer cycles — skip tick */
+          /* db busy between writer cycles â€” skip tick */
         }
       }, 1000);
       req.on('close', () => {
@@ -113,7 +132,7 @@ function page(): string {
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>antfarm — live whiteboard</title>
+<title>antfarm â€” live whiteboard</title>
 <style>
   :root { color-scheme: dark; }
   body { background:#0d1117; color:#c9d1d9; font-family: Consolas, monospace; margin:24px; }
@@ -131,10 +150,13 @@ function page(): string {
 </head>
 <body>
 <h1>ANTFARM</h1>
-<div class="sub">live whiteboard · read-only · polls /api/view every second</div>
+<div class="sub">live whiteboard Â· read-only Â· polls /api/view every second</div>
+<div id="fresh-banner" data-testid="fresh-banner" style="display:none;border:1px solid #d29922;border-radius:6px;padding:10px 14px;margin-bottom:14px;color:#d29922">
+  Fresh install - no lab yet. Click <b>Start dry-run</b> below to create one, or configure and <b>Start live</b>.
+</div>
 <section data-testid="colony-panel">
 <h2>Colony control</h2>
-<div class="sub">serve mode only (npm start -- serve) — CLI runs are managed by their own terminal</div>
+<div class="sub">serve mode only (npm start -- serve) â€” CLI runs are managed by their own terminal</div>
 <button id="start-dry" data-testid="colony-start-dry">Start dry-run</button>
 <button id="start-live" data-testid="colony-start-live">Start live</button>
 <button id="stop" data-testid="colony-stop">Stop</button>
@@ -154,7 +176,7 @@ function page(): string {
 </section>
 <section>
 <h2>Settings</h2>
-<div class="sub">saved to lab.config.json — applies on the next orchestrator start</div>
+<div class="sub">saved to lab.config.json â€” applies on the next orchestrator start</div>
 <table>
 <tr><th>model</th><td><input id="s-model" placeholder="provider/model (blank = opencode default)" style="width:340px"></td></tr>
 <tr><th>maxTokensPerCycle</th><td><input id="s-tokens" type="number" min="1000"></td></tr>
@@ -174,11 +196,21 @@ async function refresh() {
   try {
     const v = await (await fetch('/api/view')).json();
     if (v.error) { document.body.innerHTML = '<div class="err">lab busy: ' + esc(v.error) + '</div>'; return; }
+    const banner = document.getElementById('fresh-banner');
+    if (banner) banner.style.display = v.fresh ? 'block' : 'none';
+    if (v.fresh) {
+      document.getElementById('agents').innerHTML = '<tr><td class="muted">fresh install â€” no lab yet. Click "Start dry-run" below to create one, or configure and "Start live".</td></tr>';
+      document.getElementById('mail').innerHTML = '';
+      document.getElementById('board').innerHTML = '';
+      document.getElementById('usage').innerHTML = '';
+      document.getElementById('sessions').innerHTML = '';
+      return;
+    }
     document.getElementById('agents').innerHTML = v.agents.map(a =>
       '<tr><th>' + esc(a.agent) + '</th><td class="' + cls(a.status) + '">' + esc(a.status) +
       '</td><td>' + a.cycles + ' cycles</td><td class="muted">"' + esc(a.lastSession || '') + '"</td></tr>').join('');
     document.getElementById('mail').innerHTML = v.latestMail.map(m =>
-      '<tr><td>#' + m.id + '</td><td>' + esc(m.type) + '</td><td>' + esc(m.from) + ' → ' + esc(m.to) +
+      '<tr><td>#' + m.id + '</td><td>' + esc(m.type) + '</td><td>' + esc(m.from) + ' â†’ ' + esc(m.to) +
       '</td><td>' + esc(m.subject) + '</td></tr>').join('') || '<tr><td class="muted">(no mail yet)</td></tr>';
     document.getElementById('board').innerHTML = v.board.map(t =>
       '<tr><td>#' + t.id + '</td><td class="' + cls(t.state) + '">[' + esc(t.state) + ']</td><td>' + esc(t.title) +
@@ -199,7 +231,7 @@ async function refresh() {
       '</td><td>c' + s.cycle + '</td><td>' + (s.tokensIn + s.tokensOut).toLocaleString() + ' tok</td><td>$' +
       s.cost.toFixed(4) + '</td><td class="muted">' + esc(s.model || '') + '</td></tr>').join('')
       || '<tr><td class="muted">(none)</td></tr>';
-  } catch (err) { /* transient — poll again */ }
+  } catch (err) { /* transient â€” poll again */ }
 }
 setInterval(refresh, 5000);
 const es = new EventSource('/api/stream');
@@ -220,7 +252,7 @@ async function loadSettings() {
     document.getElementById('s-cool').value = cfg.exhaustionCooldownMs ?? '';
   } catch {
     const msg = document.getElementById('save-msg');
-    msg.textContent = 'settings unavailable — restart the dashboard (npm run dashboard)';
+    msg.textContent = 'settings unavailable â€” restart the dashboard (npm run dashboard)';
     msg.style.color = '#f85149';
   }
 }
@@ -238,7 +270,7 @@ async function control(endpoint, body) {
 }
 document.getElementById('start-dry').onclick = () => control('/api/lab/start', { live: false });
 document.getElementById('start-live').onclick = async () => {
-  if (await control('/api/lab/start', { live: true })) note('live colony starting…', '#3fb950');
+  if (await control('/api/lab/start', { live: true })) note('live colony startingâ€¦', '#3fb950');
 };
 document.getElementById('stop').onclick = () => control('/api/lab/stop');
 setInterval(async () => {
@@ -261,7 +293,7 @@ document.getElementById('save').onclick = async () => {
   };
   const res = await fetch('/api/settings', { method: 'POST', headers: {'content-type':'application/json'}, body: JSON.stringify(patch) });
   const out = await res.json();
-  document.getElementById('save-msg').textContent = out.ok ? 'saved ✓ (next start)' : 'error: ' + out.error;
+  document.getElementById('save-msg').textContent = out.ok ? 'saved âœ“ (next start)' : 'error: ' + out.error;
   setTimeout(() => { document.getElementById('save-msg').textContent = ''; }, 4000);
 };
 loadSettings();
@@ -274,7 +306,7 @@ loadSettings();
 if (process.argv[1] && process.argv[1].replace(/\\/g, '/').endsWith('apps/dashboard/src/main.ts')) {
   const path = labDbPath();
   if (!existsSync(path)) {
-    console.error(`no lab database at ${path} — run the orchestrator first`);
+    console.error(`no lab database at ${path} â€” run the orchestrator first`);
     process.exit(1);
   }
   const port = Number(process.env.ANTFARM_DASHBOARD_PORT ?? 4177);

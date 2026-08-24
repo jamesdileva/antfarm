@@ -65,12 +65,14 @@ describe('dashboard server', () => {
     expect(missing.out.status).toBe(404);
   });
 
-  it('reports 503 when the lab db is unavailable', async () => {
+  it('returns a fresh empty view (200) when the lab db does not exist yet', async () => {
     const route = handle(join(dir, 'missing.db'));
     const res = fakeRes();
     route({ url: '/api/view' } as never, res.res as never);
-    expect(res.out.status).toBe(503);
-    expect(JSON.parse(res.out.body).error).toBeTruthy();
+    expect(res.out.status).toBe(200);
+    const body = JSON.parse(res.out.body) as { fresh: boolean; agents: unknown[] };
+    expect(body.fresh).toBe(true);
+    expect(body.agents).toHaveLength(2);
   });
 
   it('starts a real HTTP server and answers fetches', async () => {
