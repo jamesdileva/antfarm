@@ -13,6 +13,10 @@ export interface LabConfig {
   harness: { buildCmd?: string; testCmd?: string; timeoutMs: number };
   /** per-agent incentive overlays (see drives.PERSONALITIES), optional */
   personalities: Record<string, string>;
+  /** daemon live mode: proactive idle cycle cadence + quiet-round sleep */
+  idleTickMs: number;
+  /** token-cap exhaustion auto-unpark window */
+  exhaustionCooldownMs: number;
 }
 
 const DEFAULTS: LabConfig = {
@@ -25,6 +29,8 @@ const DEFAULTS: LabConfig = {
   backoffMaxMs: 60_000,
   harness: { timeoutMs: 120_000 },
   personalities: {},
+  idleTickMs: 60_000,
+  exhaustionCooldownMs: 600_000,
 };
 
 /** Shallow-merge a lab.config.json over the defaults; absent file is fine. */
@@ -45,6 +51,8 @@ export function mergeConfig(base: LabConfig, raw: unknown): LabConfig {
   if (typeof r.escalationStaleAfterMs === 'number') out.escalationStaleAfterMs = r.escalationStaleAfterMs;
   if (typeof r.backoffBaseMs === 'number') out.backoffBaseMs = r.backoffBaseMs;
   if (typeof r.backoffMaxMs === 'number') out.backoffMaxMs = r.backoffMaxMs;
+  if (typeof r.idleTickMs === 'number') out.idleTickMs = r.idleTickMs;
+  if (typeof r.exhaustionCooldownMs === 'number') out.exhaustionCooldownMs = r.exhaustionCooldownMs;
   if (typeof r.budgets === 'object' && r.budgets !== null) {
     const b = r.budgets as Record<string, unknown>;
     if (typeof b.maxTokensPerCycle === 'number') out.budgets.maxTokensPerCycle = b.maxTokensPerCycle;

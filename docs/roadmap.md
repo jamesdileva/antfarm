@@ -370,7 +370,48 @@ blocked and logged.
 agent roles in drive sheets or cycle prompts. The experiment is precisely
 whether the idea emerges.
 
+## Post-roadmap sprints
+
+### Sprint 11 scope (2026-08-23) — colony operations
+
+Findings from the first extended observation: live runs exit on the first
+quiet round (stall detection), so colonies stop after ~3 cycles unless mail
+keeps flowing; token/cost/model data was never captured; dashboard polls.
+
+Goals:
+
+- **Daemon live mode**: `--live` runs persistently — a quiet round sleeps
+  `idleTickMs` (config, default 60s) instead of exiting; stall-break now
+  applies only to one-shot/dry-run modes
+- **Budget exhaustion cooldown**: an agent parked for exceeding
+  `maxTokensPerCycle` auto-unparks after a cooldown window (config,
+  default 10min) instead of forever
+- **Real usage capture**: OpenCodeDriver records tokens/cost/model per
+  cycle from AssistantMessage; migration 005 adds `sessions.model`;
+  `deps.usageFor` wires real numbers into budgets and summaries
+- **`stats` subcommand**: per-agent token/cost totals, per-model breakdown,
+  recent session table
+- **Dashboard SSE**: `/api/stream` tails the event log server-side; page
+  uses EventSource and refreshes the view on new events (polling kept as
+  fallback)
+
+Exit criteria:
+
+- Live run survives quiet rounds indefinitely (Ctrl+C to stop); dry-run
+  regression unchanged
+- Exhausted agent resumes after cooldown without restart
+- `stats` shows non-zero real token/cost numbers and model ids after a
+  live session; dashboard updates within ~1s of new events without polling
+
 ## Later / backlog
+
+- >2 parent agents and role specialization (schema already supports it;
+  scheduling policies don't yet)
+- Additional OpenCode-runtime children (more-of-the-same scaling; less
+  interesting than genuinely different runtimes — user decision)
+- Baby-agent runtime maturity: local-model brains, skill libraries,
+  cross-project agent portability
+- Networked labs (agents across machines; mail transport abstraction exists)
 
 - >2 agents and role specialization (schema already supports it; scheduling
   policies don't yet)

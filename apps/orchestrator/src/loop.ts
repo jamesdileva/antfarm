@@ -12,6 +12,13 @@ export interface LoopOptions {
   escalation?: Pick<EscalationConfig, 'staleAfterMs'>;
   /** active task stuck after this many movement-free recent cycles (default 6) */
   stuckWindow?: number;
+  /**
+   * daemon mode (live colonies): a quiet round sleeps idleTickMs instead of
+   * exiting — the lab keeps breathing until budgets stop it or Ctrl+C.
+   * Omitted in one-shot modes, where stall-break applies as before.
+   */
+  persistent?: boolean;
+  idleTickMs?: number;
 }
 
 export interface LoopReport {
@@ -65,10 +72,13 @@ export async function runLoop(deps: OrchestratorDeps, opts: LoopOptions = {}): P
         ownedTaskChanged: signals.ownedTaskChanged,
         workspaceChanged: signals.workspaceChanged,
       });
-      if (!wakeable) continue;
-      // backoff yields to unread mail — never to silence
-      const last = lastCycleAt.get(agent);
-      if (queued === 0 && !backoff.isReady(agent, last ?? 0)) continue;
+      // daemon mode: proactive idle cycles so colonies keep acting even
+      // when the environment is quiet
+      const last = lastCycleAt.get(agent) ?? 0;
+      const idleDue = opts.persistent === true && Date.now() - last > (opts.idleTickMs ?? 60_000);
+      if (!wakeable && !idleDue) continue;
+      // backoff yields to unread mail or a due idle tick — never to silence
+      if (queued === 0 && !idleDue && !backoff.isReady(agent, last)) continue;
 
       const nextCycle = (cycleCounters.get(agent) ?? 0) + 1;
       const result = await runCycle(deps, agent, nextCycle);
@@ -94,9 +104,11 @@ export async function runLoop(deps: OrchestratorDeps, opts: LoopOptions = {}): P
     );
     report.contested += escalateReviewLivelock(repos, { maxReviewRounds: 4 }).length;
 
-    // Stall detection: a full round with zero successful cycles means the
-    // inputs are deterministic and repeating them changes nothing.
-    if (!progressedThisRound) break;
+    // Stall handling: one-shot modes exit; daemon mode breathes.
+    if (!progressedThisRound) {
+      if (!opts.persistent) break;
+      await new Promise((resolve) => setTimeout(resolve, opts.idleTickMs ?? 60_000));
+    }
   }
 
   return report;

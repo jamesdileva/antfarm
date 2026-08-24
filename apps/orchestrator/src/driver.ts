@@ -12,4 +12,11 @@ export interface AgentDriver {
   run(ctx: DriverContext): Promise<ActionsOutputT>;
   /** best-effort cancellation when the orchestrator times a cycle out */
   abort?(agent: string): void | Promise<void>;
+  /** real token/cost/model sample from the most recent cycle, if the runtime provides one */
+  lastUsage?(agent: string): {
+    tokensIn: number;
+    tokensOut: number;
+    cost: number;
+    model?: string;
+  } | undefined;
 }

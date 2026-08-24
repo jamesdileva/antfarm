@@ -125,7 +125,7 @@ async function makeDeps(dbPath: string, live: boolean): Promise<OrchestratorDeps
     }
     return {
       repos,
-      budgets: new Budgets(cfg.budgets),
+      budgets: new Budgets(cfg.budgets, cfg.exhaustionCooldownMs),
       drivers,
       agents: ['agent-a', 'agent-b', ...babies.map((b) => b.id)],
       situation: {
@@ -145,7 +145,6 @@ async function makeDeps(dbPath: string, live: boolean): Promise<OrchestratorDeps
         });
       },
       cycleTimeoutMs: cfg.cycleTimeoutMs,
-      usageFor: () => ({ tokensIn: 0, tokensOut: 0 }),
     };
   }
 
@@ -170,17 +169,20 @@ async function run(): Promise<void> {
     process.exit(1);
   }
 
+  const cfg = loadConfig();
   // Isolation rule: dry-run NEVER shares a database with live runs —
   // demo fixtures must not leak into real experiments (S8 lesson).
   const dbName = live ? 'lab.db' : 'lab-dryrun.db';
-  const deps = await makeDeps(join(loadConfig().projectRoot, dbName), live);
+  const deps = await makeDeps(join(cfg.projectRoot, dbName), live);
 
   // Seed one proposed task so scripted moves have a target (dry-run only).
   if (!live && deps.repos.tasks.list().length === 0) {
     deps.repos.tasks.create('human', { title: 'Write architecture specification' });
   }
 
-  const report = await runLoop(deps);
+  const report = await runLoop(deps, live
+    ? { persistent: true, idleTickMs: cfg.idleTickMs, maxRounds: 1_000_000 }
+    : {});
   console.log(`${live ? 'live' : 'dry'}-run complete: ${report.cyclesRun} cycles over ${report.rounds} rounds`);
   console.log(`tasks: ${deps.repos.tasks.list().map((t) => `#${t.id}[${t.state}]`).join(' ')}`);
   const decisions = deps.repos.events.byKind('decision_logged');
@@ -256,15 +258,54 @@ async function nurseryCmd(): Promise<void> {
   db.close();
 }
 
+function stats(): void {
+  const cfg = loadConfig();
+  const dbPath = join(cfg.projectRoot, 'lab.db');
+  if (!existsSync(dbPath)) {
+    console.error(`no lab database at ${dbPath}`);
+    process.exit(1);
+  }
+  const db = openDb(dbPath);
+  const repos = createRepos(db);
+  const sessions = repos.sessions.list();
+
+  console.log(`sessions: ${sessions.length}`);
+  const perAgent = new Map<string, { tokens: number; cost: number; cycles: number; models: Set<string> }>();
+  for (const s of sessions) {
+    const agg = perAgent.get(s.agent) ?? { tokens: 0, cost: 0, cycles: 0, models: new Set<string>() };
+    agg.tokens += s.tokens_in + s.tokens_out;
+    agg.cost += s.cost;
+    if (s.status === 'done') agg.cycles++;
+    if (s.model) agg.models.add(s.model);
+    perAgent.set(s.agent, agg);
+  }
+  for (const [agent, a] of perAgent) {
+    console.log(
+      `${agent}: ${a.cycles} completed cycles · ${a.tokens.toLocaleString()} tokens · $${a.cost.toFixed(4)}` +
+        ` · models: ${[...a.models].join(', ') || 'n/a'}`
+    );
+  }
+
+  console.log('\nrecent sessions:');
+  for (const s of sessions.slice(-10)) {
+    console.log(
+      `#${s.id} ${s.agent} ${s.status} c${s.cycle} in=${s.tokens_in} out=${s.tokens_out} ` +
+        `$${s.cost.toFixed(4)} ${s.model || ''} | ${(s.summary ?? '').slice(0, 50)}`
+    );
+  }
+  db.close();
+}
+
 async function main(): Promise<void> {
   const cmd = process.argv[2];
   // `run` is also the implicit command when only flags are passed
   if (cmd === 'init') await init();
   else if (cmd === 'reset') await reset();
   else if (cmd === 'nursery') await nurseryCmd();
+  else if (cmd === 'stats') stats();
   else if (cmd === undefined || cmd === 'run' || cmd.startsWith('--')) await run();
   else {
-    console.error(`unknown command: ${cmd} (try: init | reset | nursery | run)`);
+    console.error(`unknown command: ${cmd} (try: init | reset | nursery | stats | run)`);
     process.exit(1);
   }
 }

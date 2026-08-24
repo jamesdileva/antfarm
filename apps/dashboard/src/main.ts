@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse, type Server } from 'node:http';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { openDb } from '@antfarm/db';
 import { buildView, type ObserverView } from '@antfarm/observer-cli';
 
 export function labDbPath(): string {
@@ -30,6 +31,36 @@ export function handle(dbPath: string): (req: IncomingMessage, res: ServerRespon
         res.writeHead(503, { 'content-type': 'application/json' });
         res.end(JSON.stringify({ error: String((err as Error).message) }));
       }
+      return;
+    }
+    if (url === '/api/stream') {
+      // SSE: push a tick whenever new events land; page refreshes its view
+      if (!existsSync(dbPath)) {
+        res.writeHead(503);
+        res.end();
+        return;
+      }
+      res.writeHead(200, {
+        'content-type': 'text/event-stream',
+        'cache-control': 'no-cache',
+        connection: 'keep-alive',
+      });
+      let closed = false;
+      const timer = setInterval(() => {
+        if (closed) return;
+        try {
+          const db = openDb(dbPath);
+          const row = db.prepare('SELECT COUNT(*) AS n FROM events').get() as { n: number };
+          db.close();
+          res.write(`data: ${JSON.stringify({ totalEvents: row.n })}\n\n`);
+        } catch {
+          /* db busy between writer cycles — skip tick */
+        }
+      }, 1000);
+      req.on('close', () => {
+        closed = true;
+        clearInterval(timer);
+      });
       return;
     }
     if (url === '/' || url === '/index.html') {
@@ -103,7 +134,9 @@ async function refresh() {
       '<tr><td>[' + esc(e.kind) + ']</td><td>' + esc(e.actor) + '</td></tr>').join('');
   } catch (err) { /* transient — poll again */ }
 }
-setInterval(refresh, 1000);
+setInterval(refresh, 5000);
+const es = new EventSource('/api/stream');
+es.onmessage = refresh; // push-driven refresh on new events
 refresh();
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
 </script>

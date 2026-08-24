@@ -40,7 +40,16 @@ export interface AssistantInfo {
   error?: { name?: string; message?: string; retries?: unknown };
   tokens?: Record<string, number>;
   cost?: number;
+  modelID?: string;
+  providerID?: string;
   [k: string]: unknown;
+}
+
+export interface UsageSample {
+  tokensIn: number;
+  tokensOut: number;
+  cost: number;
+  model: string;
 }
 
 export interface HealthClient {
@@ -133,6 +142,8 @@ export class OpenCodeDriver implements AgentDriver {
   private client: OpencodeSessionClient;
   private opts: OpenCodeDriverOptions;
   readonly sheet: DriveSheet;
+  /** most recent usage sample per agent — read by the orchestrator */
+  private usageSamples = new Map<string, UsageSample>();
 
   constructor(opts: OpenCodeDriverOptions & { client?: OpencodeSessionClient }) {
     this.opts = opts;
@@ -141,6 +152,10 @@ export class OpenCodeDriver implements AgentDriver {
     }
     this.client = opts.client;
     this.sheet = opts.driveSheet ?? SHEETS.agent;
+  }
+
+  lastUsage(agent: string): UsageSample | undefined {
+    return this.usageSamples.get(agent);
   }
 
   static sheetFor(agent: string): DriveSheet {
@@ -186,6 +201,7 @@ export class OpenCodeDriver implements AgentDriver {
     });
 
     const info = result.data.info;
+    this.usageSamples.set(ctx.agent, extractUsage(info));
     if (info.error) {
       throw new Error(`assistant error: ${info.error.name ?? 'unknown'}: ${info.error.message ?? ''}`);
     }
@@ -214,13 +230,14 @@ export function extractJson(text: string): unknown {
   }
 }
 
-/** Defensive token/cost extraction across SDK shape variations. */
-export function extractUsage(info: AssistantInfo): { tokensIn: number; tokensOut: number; cost: number } {
+/** Defensive token/cost/model extraction across SDK shape variations. */
+export function extractUsage(info: AssistantInfo): UsageSample {
   const t = info.tokens ?? {};
   const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
   return {
     tokensIn: num(t.input) || num(t.inputTokens) || num(t.prompt),
     tokensOut: num(t.output) || num(t.outputTokens) || num(t.completion),
     cost: num(info.cost),
+    model: info.providerID && info.modelID ? `${info.providerID}/${info.modelID}` : '',
   };
 }

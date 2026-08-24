@@ -224,6 +224,7 @@ export interface SessionRow {
   started_at: string;
   ended_at: string | null;
   summary: string | null;
+  model: string;
 }
 
 export class SessionRepo {
@@ -251,15 +252,15 @@ export class SessionRepo {
   }
 
   finish(id: number, status: 'done' | 'timed_out' | 'failed',
-         usage: { tokensIn?: number; tokensOut?: number; cost?: number },
+         usage: { tokensIn?: number; tokensOut?: number; cost?: number; model?: string },
          summary?: string): SessionRow {
     this.db
       .prepare(
         `UPDATE sessions SET status = ?, ended_at = ?, tokens_in = ?, tokens_out = ?,
-         cost = ?, summary = ? WHERE id = ?`
+         cost = ?, summary = ?, model = ? WHERE id = ?`
       )
       .run(status, new Date().toISOString(), usage.tokensIn ?? 0, usage.tokensOut ?? 0,
-           usage.cost ?? 0, summary ?? null, id);
+           usage.cost ?? 0, summary ?? null, usage.model ?? '', id);
     return this.byId(id);
   }
 }

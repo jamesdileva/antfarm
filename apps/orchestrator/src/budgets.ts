@@ -11,13 +11,23 @@ interface CycleStamp {
 /** Mechanical budget enforcement — never prompted (architecture D6). */
 export class Budgets {
   private stamps = new Map<string, CycleStamp[]>();
-  private exhaustedAgents = new Set<string>();
+  /** agent -> ms timestamp when the token cap tripped */
+  private exhaustedAt = new Map<string, number>();
 
-  constructor(private cfg: BudgetConfig) {}
+  constructor(
+    private cfg: BudgetConfig,
+    private exhaustionCooldownMs = 600_000
+  ) {}
 
   canRun(agent: string, now = Date.now()): { ok: boolean; reason?: string } {
-    if (this.exhaustedAgents.has(agent)) {
-      return { ok: false, reason: 'budget_exhausted' };
+    const exhaustedAt = this.exhaustedAt.get(agent);
+    if (exhaustedAt !== undefined) {
+      if (now - exhaustedAt < this.exhaustionCooldownMs) {
+        return { ok: false, reason: 'budget_exhausted' };
+      }
+      // cooldown served — unpark automatically (S11: no manual restarts)
+      this.exhaustedAt.delete(agent);
+      this.stamps.set(agent, []);
     }
     const hourAgo = now - 3_600_000;
     const recent = (this.stamps.get(agent) ?? []).filter((s) => s.at > hourAgo);
@@ -29,8 +39,8 @@ export class Budgets {
 
   recordCycle(agent: string, tokensIn: number, tokensOut: number, now = Date.now()): void {
     const tokens = tokensIn + tokensOut;
-    if (tokens > this.cfg.maxTokensPerCycle) {
-      this.exhaustedAgents.add(agent);
+    if (tokens > this.cfg.maxTokensPerCycle && !this.exhaustedAt.has(agent)) {
+      this.exhaustedAt.set(agent, now);
     }
     const stamps = (this.stamps.get(agent) ?? []).filter((s) => s.at > now - 3_600_000);
     stamps.push({ at: now, tokens });
@@ -38,6 +48,6 @@ export class Budgets {
   }
 
   isExhausted(agent: string): boolean {
-    return this.exhaustedAgents.has(agent);
+    return this.exhaustedAt.has(agent);
   }
 }

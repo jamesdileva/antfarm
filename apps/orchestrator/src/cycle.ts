@@ -97,7 +97,9 @@ export async function runCycle(deps: OrchestratorDeps, agent: string, cycle: num
 
   commitActions(deps, agent, session.id, output);
 
-  const usage = deps.usageFor?.(output) ?? defaultUsage();
+  // real runtime usage (live) beats estimator overrides beats defaults
+  const sampled = driver.lastUsage?.(agent);
+  const usage = sampled ?? deps.usageFor?.(output) ?? defaultUsage();
   repos.sessions.finish(session.id, 'done', usage, output.summary);
   budgets.recordCycle(agent, usage.tokensIn, usage.tokensOut);
   const productive = output.mails.length + output.taskMoves.length > 0;

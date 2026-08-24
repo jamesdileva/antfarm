@@ -114,9 +114,11 @@ describe('OpenCodeDriver', () => {
   });
 
   it('extracts usage defensively across shapes', () => {
-    expect(extractUsage({ tokens: { input: 10, output: 5 }, cost: 0.02 })).toEqual({ tokensIn: 10, tokensOut: 5, cost: 0.02 });
-    expect(extractUsage({ tokens: { inputTokens: 7, outputTokens: 3 } })).toEqual({ tokensIn: 7, tokensOut: 3, cost: 0 });
-    expect(extractUsage({})).toEqual({ tokensIn: 0, tokensOut: 0, cost: 0 });
+    expect(extractUsage({ tokens: { input: 10, output: 5 }, cost: 0.02 }))
+      .toEqual({ tokensIn: 10, tokensOut: 5, cost: 0.02, model: '' });
+    expect(extractUsage({ tokens: { inputTokens: 7, outputTokens: 3 }, modelID: 'm', providerID: 'p' }))
+      .toEqual({ tokensIn: 7, tokensOut: 3, cost: 0, model: 'p/m' });
+    expect(extractUsage({})).toEqual({ tokensIn: 0, tokensOut: 0, cost: 0, model: '' });
   });
 });
 
