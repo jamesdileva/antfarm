@@ -298,20 +298,42 @@ indexes the project with green test/start/build.
 
 **Goal:** parents can create, grow, and govern their own agents.
 
-- **Area abstraction:** Playground/Nursery capability flags; actor registry
-  extended to platform-owned agents (`identity.json`, `purpose.md`,
-  `permissions.json` per architecture §6.1)
-- Procreation protocol: joint DECISION proposal with evidence refs,
-  dual approval, orchestrator safety validation
-- Baby runtime v1: simplest possible loop (observe → decide → act → sleep)
-  as a rules-engine or local-model actor — deliberately *not* OpenCode, to
-  prove runtime-agnostic identity
-- Tool gateway: mechanical permission enforcement per stage (Observer →
-  Analyst → Assistant → Specialist); promotion proposals from performance
-  stats in `events`
-- **Idea-neutrality test:** no seeded purposes anywhere in prompts or
-  config; verify via audit that every `purpose.md` traces to parent
-  DECISION mail citing observed problems
+### Sprint 9 scope (2026-08-23)
+
+Goals:
+
+- **Nursery registry** (migration 004 `nursery_agents`): id, name, purpose,
+  stage (default 1 = Observer), runtime (`rules-engine`), creators, status;
+  agent directory mirrored at `project/agents/<id>/` (`identity.json`,
+  `purpose.md` — verbatim from the parents' proposal)
+- **Procreation protocol**: a parent files a DECISION mail with subject
+  `PROPOSE AGENT <id>: <name>` (body carries Purpose + Evidence lines);
+  birth requires a *second, distinct* actor approving via DECISION in the
+  same thread; the platform validates structure and grants **minimum**
+  capabilities (stage 1) no matter what was requested — safety matrix is
+  mechanical, never negotiated away
+- **Rules-engine baby runtime** (`drivers/baby.ts`): observe → decide → act
+  → sleep as an `AgentDriver`, so babies join the same scheduler loop.
+  Observer-stage rules: watch workspace deltas, acknowledge mail, file
+  STATUS reports to creators; observations appended to the baby's log
+- **Permission gateway** in `commitActions`: nursery actors have their
+  mail types / task moves checked against stage capabilities; violations →
+  `permission_denied` audit event (mechanical, D6)
+- Cold-start parity: newborns receive an orchestrator kickoff carrying their
+  recorded purpose — nothing more
+
+Out of scope (→ Sprint 10): promotion stages (Analyst/Assistant/Specialist),
+performance stats, promotion reviews; also deferred per user decision:
+additional OpenCode-runtime children (more-of-the-same scaling, less
+interesting than a genuinely different runtime).
+
+Exit criteria:
+
+- Two-agent proposal flow births a working baby end-to-end in dry-run:
+  registry row, directory files, kickoff mail, scheduled cycles
+- Self-approval and malformed proposals are rejected with audit events
+- Stage-1 baby physically cannot move tasks or file non-report mail types
+  (gateway-tested); its purpose file matches the parents' text byte-for-byte
 
 **Exit criteria:** parents autonomously identify a recurring problem and
 spawn an agent for it (or demonstrably choose not to); baby operates within

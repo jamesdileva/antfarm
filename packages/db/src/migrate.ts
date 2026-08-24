@@ -11,6 +11,7 @@ const MIGRATIONS: Array<{ version: number; file: string }> = [
   { version: 1, file: '001_init.sql' },
   { version: 2, file: '002_agent_state.sql' },
   { version: 3, file: '003_memory.sql' },
+  { version: 4, file: '004_nursery.sql' },
 ];
 
 export function openDb(path: string): Db {

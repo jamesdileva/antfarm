@@ -4,6 +4,7 @@ import type { ActionsOutputT } from './actions.js';
 import type { Budgets } from './budgets.js';
 import { buildSituation, hasDecision, type SituationContext } from './situation.js';
 import { applyMemoryUpdate } from './memory.js';
+import { capabilitiesFor, parseProposal, tryBirth } from './nursery.js';
 
 export interface OrchestratorDeps {
   repos: Repos;
@@ -143,7 +144,17 @@ function driverGoal(deps: OrchestratorDeps, agent: string): string {
 function commitActions(deps: OrchestratorDeps, agent: string, sessionId: number, output: ActionsOutputT): void {
   const { repos } = deps;
   applyMemoryUpdate(repos, deps.situation?.projectRoot ?? 'project', agent, output.memoryUpdate);
+  const caps = capabilitiesFor(repos, agent); // null for unrestricted parent agents
   for (const m of output.mails) {
+    if (caps && !caps.mailTypes.includes(m.type)) {
+      // Tool gateway (D6): stage violations are blocked mechanically
+      repos.events.append({
+        kind: 'permission_denied',
+        actor: agent,
+        payload: { action: `mail:${m.type}`, stage: 'observer' },
+      });
+      continue;
+    }
     const filed = repos.mail.enqueue(agent, m);
     repos.events.append({
       kind: 'mail_filed',
@@ -158,9 +169,19 @@ function commitActions(deps: OrchestratorDeps, agent: string, sessionId: number,
         payload: { from: agent, subject: m.subject, body: m.body, threadId: filed.thread_id },
       });
       repos.mail.markAnswered(filed.id);
+      // Procreation hook: a DECISION may be a proposal or an approval
+      void maybeProcreate(deps, filed);
     }
   }
   for (const move of output.taskMoves) {
+    if (caps && !caps.taskMoves) {
+      repos.events.append({
+        kind: 'permission_denied',
+        actor: agent,
+        payload: { action: `task:${move.state}`, taskId: move.taskId },
+      });
+      continue;
+    }
     // Mode 2 sequencing: no project work before a project is chosen.
     if (
       deps.situation?.mode === 'constrained' &&
@@ -188,5 +209,28 @@ function commitActions(deps: OrchestratorDeps, agent: string, sessionId: number,
         payload: { taskId: move.taskId, requested: move.state, error: String(err) },
       });
     }
+  }
+}
+
+/** A DECISION mail may be a nursery proposal or an approval — handle both. */
+function maybeProcreate(deps: OrchestratorDeps, filed: import('@antfarm/db').MailRow): void {
+  const { repos } = deps;
+  const projectRoot = deps.situation?.projectRoot ?? 'project';
+  if (parseProposal(filed)) {
+    repos.events.append({
+      kind: 'agent_proposed',
+      actor: filed.from_agent,
+      payload: { threadId: filed.thread_id, subject: filed.subject },
+    });
+    return;
+  }
+  // approval attempt: only meaningful inside an existing proposal thread
+  const result = tryBirth(repos, projectRoot, filed);
+  if (!result.ok && result.reason !== 'no proposal in thread') {
+    repos.events.append({
+      kind: 'procreation_failed',
+      actor: filed.from_agent,
+      payload: { reason: result.reason },
+    });
   }
 }

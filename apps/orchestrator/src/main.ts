@@ -11,6 +11,7 @@ import { seedGoal } from './goal.js';
 import { recoverOrphans } from './recover.js';
 import { loadConfig, type LabConfig } from './config.js';
 import { harnessSummary, runHarness } from './harness.js';
+import { BabyDriver } from './drivers/baby.js';
 
 export const PROJECT_ROOT = 'project';
 
@@ -116,11 +117,16 @@ async function makeDeps(dbPath: string, live: boolean): Promise<OrchestratorDeps
         personality: cfg.personalities[agent],
       });
     }
+    // Nursery actors join the same scheduler loop with their own runtime
+    const babies = repos.nursery.alive();
+    for (const baby of babies) {
+      drivers[baby.id] = new BabyDriver(baby.id, repos, workspace, projectRoot);
+    }
     return {
       repos,
       budgets: new Budgets(cfg.budgets),
       drivers,
-      agents: ['agent-a', 'agent-b'],
+      agents: ['agent-a', 'agent-b', ...babies.map((b) => b.id)],
       situation: {
         projectRoot,
         mode: cfg.mode,

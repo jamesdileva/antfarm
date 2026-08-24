@@ -338,6 +338,69 @@ export class MemoryRepo {
   }
 }
 
+export interface NurseryAgentRow {
+  id: string;
+  name: string;
+  purpose: string;
+  stage: number;
+  runtime: string;
+  created_by: string; // JSON array of creator actor ids
+  proposal_thread: string;
+  status: string;
+  created_at: string;
+}
+
+/** Registry of platform-owned (nursery) agents. */
+export class NurseryRepo {
+  constructor(private db: Db) {}
+
+  register(input: {
+    id: string;
+    name: string;
+    purpose: string;
+    createdBy: string[];
+    proposalThread: string;
+    runtime?: string;
+    stage?: number;
+  }): NurseryAgentRow {
+    this.db
+      .prepare(
+        `INSERT INTO nursery_agents (id, name, purpose, stage, runtime, created_by,
+         proposal_thread, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'alive', ?)`
+      )
+      .run(
+        input.id,
+        input.name,
+        input.purpose,
+        input.stage ?? 1,
+        input.runtime ?? 'rules-engine',
+        JSON.stringify(input.createdBy),
+        input.proposalThread,
+        new Date().toISOString()
+      );
+    const row = this.byId(input.id);
+    if (!row) throw new Error('nursery insert failed');
+    return row;
+  }
+
+  byId(id: string): NurseryAgentRow | undefined {
+    return this.db.prepare('SELECT * FROM nursery_agents WHERE id = ?').get(id) as
+      | NurseryAgentRow
+      | undefined;
+  }
+
+  alive(): NurseryAgentRow[] {
+    return this.db
+      .prepare(`SELECT * FROM nursery_agents WHERE status = 'alive' ORDER BY created_at`)
+      .all() as NurseryAgentRow[];
+  }
+
+  setStage(id: string, stage: number): void {
+    this.db.prepare('UPDATE nursery_agents SET stage = ? WHERE id = ?').run(stage, id);
+  }
+}
+
 export class EventRepo {
   constructor(private db: Db) {}
 
