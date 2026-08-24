@@ -157,6 +157,7 @@ export class OpenCodeDriver implements AgentDriver {
   /** most recent usage sample per agent — read by the orchestrator */
   private usageSamples = new Map<string, UsageSample>();
   private sessionIds = new Map<string, string>();
+  private retries = new Map<string, number>();
 
   constructor(opts: OpenCodeDriverOptions & { client?: OpencodeSessionClient }) {
     this.opts = opts;
@@ -169,6 +170,11 @@ export class OpenCodeDriver implements AgentDriver {
 
   lastUsage(agent: string): UsageSample | undefined {
     return this.usageSamples.get(agent);
+  }
+
+  /** Timestamp of the most recent same-session retry, if any. */
+  lastRetryAt(agent: string): number | undefined {
+    return this.retries.get(agent);
   }
 
   /** Session id from the most recent run — used by session GC. */
@@ -236,6 +242,7 @@ export class OpenCodeDriver implements AgentDriver {
       // windows (~5min observed). Tool progress lives IN the session —
       // re-prompt it to continue rather than throwing the work away.
       if (!/fetch failed|network|econn|socket|abort/i.test(String(err))) throw err;
+      this.retries.set(ctx.agent, Date.now());
       result = await this.client.session.prompt({
         path: { id: sessionId },
         ...(directory ? { query: directory } : {}),

@@ -143,6 +143,66 @@ describe('external targeting (query.directory)', () => {
   });
 });
 
+describe('retry visibility (prompt_retried event)', () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'antfarm-s12r-'));
+  });
+
+  afterEach(() => {
+    try {
+      rmSync(dir, { recursive: true, force: true });
+    } catch {
+      /* best effort */
+    }
+  });
+
+  function deps(repos: Repos, driver: OpenCodeDriver): OrchestratorDeps {
+    return {
+      repos,
+      budgets: new Budgets({ maxTokensPerCycle: 5000, maxCyclesPerHour: 50 }),
+      drivers: { 'agent-a': driver },
+      agents: ['agent-a'],
+      situation: { projectRoot: join(tmpdir(), 'nonexistent') },
+      sessionGc: true,
+    };
+  }
+
+  it('logs prompt_retried when a cycle resumes after an interrupted prompt', async () => {
+    const db = openDb(join(dir, 'lab4.db'));
+    const repos = createRepos(db);
+    let attempts = 0;
+    const client = {
+      session: {
+        create: async () => ({ data: { id: 'sess-r' } }),
+        prompt: async () => {
+          attempts++;
+          if (attempts === 1) throw new TypeError('fetch failed');
+          return {
+            data: {
+              info: { tokens: { input: 10, output: 5 }, cost: 0.01 },
+              parts: [{ type: 'text', text: '{"mails":[],"summary":"resumed and done"}' }],
+            },
+          };
+        },
+      } as unknown as OpencodeSessionClient['session'],
+    };
+    void client;
+    const driver = new OpenCodeDriver({ client: client as unknown as OpencodeSessionClient, driveSheet: undefined as never });
+    const d = deps(repos, driver);
+    d.sessionGc = true;
+
+    await runCycle(d, 'agent-a', 1);
+
+    expect(attempts).toBe(2); // retry fired
+    expect(driver.lastRetryAt?.('agent-a')).toBeDefined();
+    expect(repos.events.byKind('prompt_retried')).toHaveLength(1);
+    expect(repos.sessions.byId(1).status).toBe('done'); // rescued
+    db.close();
+  });
+});
+
 describe('config: workspacePath + sessionGc merge', () => {
   it('round-trips both new keys', () => {
     const merged = mergeConfig(loadConfigFrom(join(dir0(), 'missing.json')), {

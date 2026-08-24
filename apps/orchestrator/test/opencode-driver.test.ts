@@ -52,6 +52,16 @@ describe('drive sheets', () => {
     expect(BUILDER.needs.length).toBeGreaterThan(0);
     expect(CRITIC.primaryGoal).toMatch(/quality|challenge/i);
   });
+
+  it('builder carries the segment-commit discipline; critic does not', () => {
+    const builder = renderDrivePrompt(BUILDER);
+    expect(builder).toContain('Operational discipline');
+    expect(builder).toContain('ONE committable segment per cycle');
+    expect(builder).toContain('never hold uncommitted work');
+
+    const critic = renderDrivePrompt(CRITIC);
+    expect(critic).not.toContain('Operational discipline');
+  });
 });
 
 describe('OpenCodeDriver', () => {

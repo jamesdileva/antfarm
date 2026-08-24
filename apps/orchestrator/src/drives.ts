@@ -59,6 +59,16 @@ export function renderDrivePrompt(sheet: DriveSheet, personality?: PersonalityNa
     `Needs:`,
     ...sheet.needs.map((n) => `- ${n}`),
   ];
+  if (sheet.role === 'Builder') {
+    lines.push(
+      '',
+      'Operational discipline (mandatory):',
+      '- ONE committable segment per cycle: implement a slice, run its tests,',
+      '  COMMIT it, then respond. Small cycles beat big ones.',
+      '- If a task cannot finish in one cycle, commit partial progress and',
+      '  continue next cycle — never hold uncommitted work across cycles.'
+    );
+  }
   if (personality) {
     const p = PERSONALITIES[personality];
     lines.push(

@@ -59,6 +59,7 @@ export async function runCycle(deps: OrchestratorDeps, agent: string, cycle: num
   const situation = buildSituation(repos, agent, deps.situation ?? { projectRoot: 'project' });
 
   const session = repos.sessions.start({ agent, cycle, goal: driverGoal(deps, agent) });
+  const retryBefore = (driver as { lastRetryAt?: (a: string) => number | undefined }).lastRetryAt?.(agent);
 
   let output: ActionsOutputT;
   try {
@@ -106,6 +107,17 @@ export async function runCycle(deps: OrchestratorDeps, agent: string, cycle: num
   const usage = sampled ?? deps.usageFor?.(output) ?? defaultUsage();
   repos.sessions.finish(session.id, 'done', usage, output.summary);
   budgets.recordCycle(agent, usage.tokensIn, usage.tokensOut);
+
+  // retry visibility: interrupted prompts resumed on the same session
+  const retryAfter = (driver as { lastRetryAt?: (a: string) => number | undefined }).lastRetryAt?.(agent);
+  if (retryAfter !== undefined && retryAfter !== retryBefore) {
+    repos.events.append({
+      kind: 'prompt_retried',
+      actor: agent,
+      payload: { sessionId: session.id },
+    });
+  }
+
   const productive = output.mails.length + output.taskMoves.length > 0;
   repos.events.append({
     kind: 'cycle_done',
