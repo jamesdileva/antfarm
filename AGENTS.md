@@ -78,6 +78,7 @@ the subject names the phase goal.
 | 2026-08-23 | S10 | Promotions (PROMOTE AGENT → dual approval, one-stage rule, permissions mirror), babyStats, idea-neutrality audit + `nursery` subcommand; roadmap complete — next: polish + observe live colonies | 71/71 pass · build green · dry-run green | 691ad08 |
 | 2026-08-23 | S11 | Colony ops: daemon `--live` (idle ticks, no quiet-round exit), budget exhaustion cooldown, real token/cost/model capture (migration 005), `stats` command, dashboard SSE push; first live colony ended after 3 cycles due to old stall-exit — rerun recommended | 75/75 pass · build green · dry-run green | 4e99009 |
 | 2026-08-23 | S11.1 | Overnight findings fixed: workspace sandbox escape (.git exact-path check), dispute-thread livelock now counts TASK/WARNING standoffs, idle-tick streak cap (5 unproductive → stop), 300s default cycle timeout; colony built md-kb MVP (store+CLI+17 tests) despite sandbox bug; ~600k tokens total | 77/77 pass · build green · dry-run green | c99add3 |
+| 2026-08-23 | S12 | Session GC (`sessionGc` setting + dispose on all cycle outcomes), external targeting (`workspacePath` → `query.directory` into sessions), harness SKIPPED for scriptless repos, `init --target`; md-kb archived to ../md-kb-archive; latent SHEETS.agent default bug found+fixed | 82/82 pass · build green · dry-run green | 1c53b3c |
 
 <!--
 Add one row per sprint at completion:
