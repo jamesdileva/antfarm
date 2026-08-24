@@ -1,0 +1,16 @@
+appId: com.jamesdileva.antfarm
+productName: Antfarm
+directories:
+  # integration.md §2 gotcha: output resolves relative to THIS config's
+  # package dir (apps/shell) — ../.. lands win-unpacked at repo root/release
+  output: ../../release
+files:
+  - main.cjs
+extraResources:
+  - from: dist/orchestrator.cjs
+    to: orchestrator.cjs
+  - from: ../../release/native/node_modules
+    to: node_modules
+win:
+  target:
+    - dir

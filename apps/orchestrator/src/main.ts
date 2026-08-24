@@ -334,6 +334,12 @@ async function main(): Promise<void> {
   else if (cmd === 'nursery') await nurseryCmd();
   else if (cmd === 'stats') stats();
   else if (cmd === 'serve') {
+    const { setAntfarmHome } = await import('./home.js');
+    const homeIdx = process.argv.indexOf('--home');
+    if (homeIdx >= 0 && process.argv[homeIdx + 1]) {
+      setAntfarmHome(process.argv[homeIdx + 1]!);
+      console.log(`data home: ${process.argv[homeIdx + 1]}`);
+    }
     const { startServe } = await import('./serve.js');
     const app = await startServe(Number(process.env.ANTFARM_SERVE_PORT ?? 4177));
     console.log(`antfarm serve: control API + dashboard on http://127.0.0.1:${app.port}`);

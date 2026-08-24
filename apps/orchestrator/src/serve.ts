@@ -13,9 +13,21 @@ export interface ServeApp {
 export function createServeHandler(manager: ColonyManager): (req: IncomingMessage, res: ServerResponse) => void {
   const delegate = dashboardHandle(labDb(), configPath());
 
+  const CONTROL_ROUTES: Record<string, 'GET' | 'POST'> = {
+    '/api/status': 'GET',
+    '/api/lab/init': 'POST',
+    '/api/lab/start': 'POST',
+    '/api/lab/stop': 'POST',
+  };
+
   return (req, res) => {
     const url = (req.url ?? '/').split('?')[0]!;
-    if (!url.startsWith('/api/')) {
+    const method = req.method ?? 'GET';
+    const controlMethod = CONTROL_ROUTES[url];
+
+    // only KNOWN control routes are intercepted — everything else
+    // (dashboard UI, /api/view, /api/settings) delegates normally
+    if (!controlMethod || controlMethod !== method) {
       delegate(req, res);
       return;
     }
@@ -25,11 +37,11 @@ export function createServeHandler(manager: ColonyManager): (req: IncomingMessag
       res.end(JSON.stringify(body));
     };
 
-    if (url === '/api/status' && req.method === 'GET') {
+    if (url === '/api/status') {
       json(200, { colony: manager.status(), home: antfarmHome() });
       return;
     }
-    if (url === '/api/lab/init' && req.method === 'POST') {
+    if (url === '/api/lab/init') {
       readBody(req).then((body) => {
         const goal = typeof body.goal === 'string' ? body.goal : undefined;
         const mode = body.mode === 'constrained' || body.mode === 'directed' ? body.mode : undefined;
@@ -39,7 +51,7 @@ export function createServeHandler(manager: ColonyManager): (req: IncomingMessag
       });
       return;
     }
-    if (url === '/api/lab/start' && req.method === 'POST') {
+    if (url === '/api/lab/start') {
       readBody(req).then((body) => {
         void manager.start(body.live === true).then((result) =>
           json(result.ok ? 200 : 409, result)
@@ -47,11 +59,8 @@ export function createServeHandler(manager: ColonyManager): (req: IncomingMessag
       });
       return;
     }
-    if (url === '/api/lab/stop' && req.method === 'POST') {
-      void manager.stop().then((result) => json(result.ok ? 200 : 409, result));
-      return;
-    }
-    json(404, { error: `unknown control route ${url}` });
+    // /api/lab/stop
+    void manager.stop().then((result) => json(result.ok ? 200 : 409, result));
   };
 }
 

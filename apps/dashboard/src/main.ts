@@ -132,9 +132,18 @@ function page(): string {
 <body>
 <h1>ANTFARM</h1>
 <div class="sub">live whiteboard · read-only · polls /api/view every second</div>
-<section><h2>Agents</h2><table id="agents"></table></section>
-<section><h2>Latest mail</h2><table id="mail"></table></section>
-<section><h2>Task board</h2><table id="board"></table></section>
+<section data-testid="colony-panel">
+<h2>Colony control</h2>
+<div class="sub">serve mode only (npm start -- serve) — CLI runs are managed by their own terminal</div>
+<button id="start-dry" data-testid="colony-start-dry">Start dry-run</button>
+<button id="start-live" data-testid="colony-start-live">Start live</button>
+<button id="stop" data-testid="colony-stop">Stop</button>
+<span id="colony-state" data-testid="colony-status"></span>
+<span id="control-msg"></span>
+</section>
+<section><h2>Agents</h2><table id="agents" data-testid="agents-panel"></table></section>
+<section><h2>Latest mail</h2><table id="mail" data-testid="mail-panel"></table></section>
+<section><h2>Task board</h2><table id="board" data-testid="board-panel"></table></section>
 <section><h2>Checks &amp; decisions</h2><table id="checks"></table></section>
 <section><h2>Recent events</h2><table id="events"></table></section>
 <section>
@@ -215,6 +224,29 @@ async function loadSettings() {
     msg.style.color = '#f85149';
   }
 }
+
+// colony control (serve mode)
+const controlMsg = document.getElementById('control-msg');
+function note(t, color) { controlMsg.textContent = t; controlMsg.style.color = color || '#8b949e'; }
+async function control(endpoint, body) {
+  try {
+    const res = await fetch(endpoint, { method: 'POST', headers: {'content-type':'application/json'}, body: JSON.stringify(body ?? {}) });
+    const out = await res.json();
+    if (!out.ok && out.error) { note('error: ' + out.error, '#f85149'); return false; }
+    refresh(); return true;
+  } catch (err) { note('unavailable (CLI run owns nothing here)', '#f85149'); return false; }
+}
+document.getElementById('start-dry').onclick = () => control('/api/lab/start', { live: false });
+document.getElementById('start-live').onclick = async () => {
+  if (await control('/api/lab/start', { live: true })) note('live colony starting…', '#3fb950');
+};
+document.getElementById('stop').onclick = () => control('/api/lab/stop');
+setInterval(async () => {
+  try {
+    const s = await (await fetch('/api/status')).json();
+    document.getElementById('colony-state').textContent = 'colony: ' + s.colony.state + (s.colony.live ? ' (live)' : '');
+  } catch { /* serve mode only */ }
+}, 2000);
 document.getElementById('save').onclick = async () => {
   const num = (id) => { const v = Number(document.getElementById(id).value); return Number.isFinite(v) && v > 0 ? v : undefined; };
   const modelVal = document.getElementById('s-model').value.trim();

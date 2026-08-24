@@ -1,8 +1,21 @@
 # Sprint Plan — Antfarm Desktop (Electron + Full GUI)
 
-Status: **planned** (S13–S15). Goal: standalone `Antfarm.exe` — full GUI for
-lab lifecycle (create/start/stop), Sentinel-indexable (build → open →
-feature-test → screenshots).
+Status: **COMPLETE** (2026-08-24, S13–S15). E2E smoke green: packaged exe
+launches own orchestrator, lab created via control API, dry colony completes,
+`taskkill /T` cleanup verified.
+
+Lessons paid for during S15:
+- esbuild cjs output turns `import.meta.url` into undefined → migrations are
+  now embedded TS constants (no runtime fs lookup)
+- env propagation through Electron-as-Node is unreliable → data home passes
+  as `--home` CLI arg instead
+- `openSync(file,'a')` does not create parent dirs — mkdir home first
+- copying native modules: a path-based `filter` that mentions `node_modules`
+  excludes everything; copy then `rmSync` transitive deps instead
+- electron-builder needs an exact electron version; prebuild-install fetched
+  the official electron-ABI better-sqlite3 binary (`-r electron -t <ver>`)
+- GUI apps have no stdio: orchestrator logs to `<home>/orchestrator.log`,
+  shell shows error dialogs on uncaught exceptions
 
 Decisions made:
 - Shell: **Electron** — integration.md §3 playbook de-risks it

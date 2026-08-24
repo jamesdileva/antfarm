@@ -17,16 +17,37 @@ function repoRoot() {
 }
 
 function startOrchestrator(homeDir) {
+  // ensure the data home exists BEFORE opening logs/spawning
+  require('node:fs').mkdirSync(homeDir, { recursive: true });
   const root = repoRoot();
-  const tsxCli = path.join(root, 'node_modules', 'tsx', 'dist', 'cli.mjs');
-  const entry = path.join(root, 'apps', 'orchestrator', 'src', 'main.ts');
-  const child = spawn(process.execPath, [tsxCli, entry, 'serve'], {
-    cwd: root,
-    env: { ...process.env, ANTFARM_HOME: homeDir, ANTFARM_SERVE_PORT: String(SERVE_PORT) },
-    stdio: ['ignore', 'pipe', 'pipe'],
+  let entry;
+  let childEnv = { ...process.env, ANTFARM_HOME: homeDir, ANTFARM_SERVE_PORT: String(SERVE_PORT) };
+  let childCwd = root;
+  if (app.isPackaged) {
+    // packaged: run the bundled orchestrator with Electron-as-Node,
+    // native modules resolved from shipped resources via NODE_PATH
+    entry = path.join(process.resourcesPath, 'orchestrator.cjs');
+    childEnv.ELECTRON_RUN_AS_NODE = '1';
+    childEnv.NODE_PATH = path.join(process.resourcesPath, 'node_modules');
+    childCwd = path.join(homeDir); // never the exe dir (it is read-only-ish)
+  } else {
+    const tsxCli = path.join(root, 'node_modules', 'tsx', 'dist', 'cli.mjs');
+    entry = path.join(root, 'apps', 'orchestrator', 'src', 'main.ts');
+    childCwd = root;
+  }
+  // §3 rule 8: log startup milestones — GUI apps have no visible stdio
+  const logFile = path.join(homeDir, 'orchestrator.log');
+  const out = require('node:fs').openSync(logFile, 'a');
+  const stamp = `=== launch ${new Date().toISOString()} entry=${entry} cwd=${childCwd} ===\n`;
+  require('node:fs').writeSync(out, stamp);
+  const child = spawn(process.execPath, [entry, 'serve', '--home', homeDir], {
+    cwd: childCwd,
+    env: childEnv,
+    stdio: ['ignore', out, out],
   });
-  child.stdout.on('data', (d) => process.stdout.write(`[orchestrator] ${d}`));
-  child.stderr.on('data', (d) => process.stderr.write(`[orchestrator] ${d}`));
+  child.on('exit', (code) => {
+    require('node:fs').appendFileSync(logFile, `=== exited code=${code} ===\n`);
+  });
   return child;
 }
 
@@ -71,6 +92,16 @@ async function createWindow() {
   });
   await win.loadURL(`http://127.0.0.1:${SERVE_PORT}/`);
 }
+
+process.on('uncaughtException', (err) => {
+  try {
+    const { dialog } = require('electron');
+    dialog.showErrorBox('Antfarm error', String(err && err.stack ? err.stack : err));
+  } catch {
+    /* headless */
+  }
+  console.error(err);
+});
 
 app.whenReady().then(createWindow);
 
