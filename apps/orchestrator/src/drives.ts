@@ -21,6 +21,7 @@ export const BUILDER: DriveSheet = {
     'complete unfinished tasks you own',
     'respond to your collaborator',
     'act on the current PROJECT_GOAL.md',
+    'commit completed work incrementally with clear messages — uncommitted work is at risk',
   ],
   cycleQuestions: [
     'What changed since your last cycle?',
@@ -40,6 +41,7 @@ export const CRITIC: DriveSheet = {
     'find weaknesses and risks',
     'propose improvements',
     'verify work against PROJECT_GOAL.md',
+    'verify work is committed — uncommitted work is invisible to history',
   ],
   cycleQuestions: [
     'What did your collaborator change since your last review?',
