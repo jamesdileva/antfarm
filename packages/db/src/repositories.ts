@@ -197,6 +197,10 @@ export class TaskRepo {
     if (task.owner && !privileged && task.owner !== actor) {
       throw new Error(`illegal task move: ${actor} does not own task ${id} (owned by ${task.owner})`);
     }
+    // Human-authored work cannot be dropped by agents (nexus lesson).
+    if (toState === 'dropped' && task.created_by === 'human' && !privileged) {
+      throw new Error(`illegal task drop: task ${id} was created by the human and may not be dropped by ${actor}`);
+    }
     this.db
       .prepare('UPDATE tasks SET state = ?, owner = COALESCE(?, owner), updated_at = ? WHERE id = ?')
       .run(toState, owner ?? null, new Date().toISOString(), id);

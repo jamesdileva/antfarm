@@ -96,6 +96,28 @@ describe('task repo state machine', () => {
 
     expect(() => repos.tasks.move('agent-a', task.id, 'done')).not.toThrow();
     expect(() => repos.tasks.move('agent-b', task.id, 'active')).toThrow(/illegal/);
+  });
+
+  it('protects human-created tasks from agent drops', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'antfarm-humantask-'));
+    const db = openDb(join(dir, 'test.db'));
+    const repos = createRepos(db);
+
+    const humanTask = repos.tasks.create('human', { title: 'human-requested work' });
+    repos.tasks.move('agent-a', humanTask.id, 'active', 'agent-a');
+    expect(() => repos.tasks.move('agent-a', humanTask.id, 'dropped')).toThrow(/created by the human/);
+
+    // agents can still drop their own tasks
+    const ownTask = repos.tasks.create('agent-b', { title: 'self-created' });
+    repos.tasks.move('agent-b', ownTask.id, 'active', 'agent-b');
+    expect(() => repos.tasks.move('agent-b', ownTask.id, 'dropped')).not.toThrow();
+
+    // and the platform can always clean up
+    expect(() => repos.tasks.move('orchestrator', humanTask.id, 'dropped')).not.toThrow();
+
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
 
     db.close();
     rmSync(dir, { recursive: true, force: true });
