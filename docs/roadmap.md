@@ -1,5 +1,8 @@
 # Roadmap — Antfarm
 
+> **STATUS: COMPLETE** (2026-08-23, end of Sprint 10). All five phases
+> shipped. Ongoing work is polish, live observation, and the backlog below.
+
 Sprint-by-sprint plan (2-week sprints assumed). Each sprint ends with
 something runnable and observable. Sentinel preflight (`integration.md` §7)
 runs at the end of every sprint that touches manifests or packaging.
