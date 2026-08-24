@@ -86,6 +86,7 @@ the subject names the phase goal.
 | 2026-08-24 | S12.5 | Builder segment-commit discipline (ONE committable slice per cycle — attacks the ~5min death window at cause), prompt_retried visibility event; board reconciled to git reality by human (#2/#4/#5 done, #6 dup); push-permission standing policy mailed to both agents | 86/86 pass · build green | bd72d87 |
 | 2026-08-24 | S12.6 | Transient APIError responses (provider load) now get same-session resume like fetch-failures; auth errors still fail fast; drop-protection verified live (agent-b blocked twice on human task #1); colony reached nexus S14, board pipeline self-sustaining (#8–#13 agent-created+closed) | 88/88 pass · build green | c677569 |
 | 2026-08-24 | S13 | ANTFARM_HOME data-home resolution: all lab paths (config/db/project) decouple from CWD via home.ts resolver (env → CWD fallback, backward-compatible); dashboard/observer/nursery/stats/reset/init migrated; foundation for S14–15 desktop packaging per docs/sprint-13-desktop.md | 92/92 pass · build green · dry-run green | a9b1645 |
+| 2026-08-24 | S14 | Orchestrator serve mode (`serve` cmd): ColonyManager lifecycle + control API (init/start/stop/status) co-hosted with dashboard UI; runLoop AbortSignal stop; buildDeps extracted to lab.ts shared by CLI+serve; Electron shell spawns orchestrator w/ userData ANTFARM_HOME, waits healthy, loads window; dry-run colony startable+completable via pure HTTP | 98/98 pass · build green | 76228bb |
 
 <!--
 Add one row per sprint at completion:
