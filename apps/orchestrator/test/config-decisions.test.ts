@@ -27,7 +27,7 @@ describe('config', () => {
     const dir = mkdtempSync(join(tmpdir(), 'antfarm-cfg-'));
     const cfg = loadConfig(dir);
     expect(cfg.budgets.maxCyclesPerHour).toBe(30);
-    expect(cfg.cycleTimeoutMs).toBe(120_000);
+    expect(cfg.cycleTimeoutMs).toBe(300_000);
     cleanup(dir);
   });
 

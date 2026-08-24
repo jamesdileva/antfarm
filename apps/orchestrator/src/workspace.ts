@@ -1,5 +1,5 @@
 import { simpleGit, type SimpleGit } from 'simple-git';
-import { mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 export interface WorkspaceChange {
@@ -19,8 +19,10 @@ export class Workspace {
   }
 
   async ensureRepo(): Promise<void> {
-    const isRepo = await this.git.checkIsRepo().catch(() => false);
-    if (!isRepo) {
+    // Must check for .git AT THIS EXACT PATH — simple-git's checkIsRepo()
+    // walks up parents, which made the sandbox resolve to the antfarm repo
+    // itself (overnight-run lesson: agents' git ops escaped the sandbox).
+    if (!existsSync(join(this.root, '.git'))) {
       await this.git.init();
       await this.git.addConfig('user.name', 'antfarm');
       await this.git.addConfig('user.email', 'antfarm@local');

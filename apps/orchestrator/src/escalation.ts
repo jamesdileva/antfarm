@@ -9,6 +9,8 @@ export interface EscalationConfig {
 export interface LivelockConfig {
   /** REVIEW rounds without a DECISION before a thread is contested */
   maxReviewRounds: number;
+  /** broader dispute threads (REVIEW/TASK/WARNING) threshold; defaults to maxReviewRounds */
+  maxDisputeRounds?: number;
 }
 
 /**
@@ -69,15 +71,21 @@ export function escalateReviewLivelock(
   cfg: LivelockConfig & { agents?: [string, string] }
 ): ContestedThread[] {
   const [first, second] = cfg.agents ?? ['agent-a', 'agent-b'];
-  const reviews = repos.mail.byKind('REVIEW');
+  // Dispute threads: REVIEW rounds OR TASK/WARNING demands ping-ponging
+  // without a DECISION (overnight-run lesson: evidence-gate standoffs used
+  // TASK/WARNING types and never hit the REVIEW counter).
+  const disputeTypes = new Set(['REVIEW', 'TASK', 'WARNING']);
   const threads = new Map<string, number>();
-  for (const m of reviews) {
-    threads.set(m.thread_id, (threads.get(m.thread_id) ?? 0) + 1);
+  for (const type of disputeTypes) {
+    for (const m of repos.mail.byKind(type as never)) {
+      threads.set(m.thread_id, (threads.get(m.thread_id) ?? 0) + 1);
+    }
   }
 
   const contested: ContestedThread[] = [];
+  const disputeThreshold = cfg.maxDisputeRounds ?? cfg.maxReviewRounds;
   for (const [threadId, rounds] of threads) {
-    if (rounds < cfg.maxReviewRounds) continue;
+    if (rounds < disputeThreshold) continue;
     const hasDecision = repos.mail
       .byThread(threadId)
       .some((m) => m.type === 'DECISION');

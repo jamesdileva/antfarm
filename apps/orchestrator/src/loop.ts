@@ -44,6 +44,9 @@ export async function runLoop(deps: OrchestratorDeps, opts: LoopOptions = {}): P
   const cycleCounters = new Map<string, number>(agents.map((a) => [a, 0]));
   const lastCycleAt = new Map<string, number>();
   const backoff = new Backoff(500, 60_000);
+  /** consecutive unproductive cycles — caps idle-tick burning (S11.1) */
+  const idleStreak = new Map<string, number>();
+  const IDLE_STREAK_MAX = 5;
   const report: LoopReport = { rounds: 0, cyclesRun: 0, skipped: [], escalated: 0, stucked: [], contested: 0 };
   const cfg = loadConfig();
 
@@ -73,9 +76,15 @@ export async function runLoop(deps: OrchestratorDeps, opts: LoopOptions = {}): P
         workspaceChanged: signals.workspaceChanged,
       });
       // daemon mode: proactive idle cycles so colonies keep acting even
-      // when the environment is quiet
+      // when the environment is quiet — but an agent that burns several
+      // idle ticks without filing anything stops getting them until a
+      // real signal (mail / workspace / task change) arrives
       const last = lastCycleAt.get(agent) ?? 0;
-      const idleDue = opts.persistent === true && Date.now() - last > (opts.idleTickMs ?? 60_000);
+      const streak = idleStreak.get(agent) ?? 0;
+      const idleDue =
+        opts.persistent === true &&
+        Date.now() - last > (opts.idleTickMs ?? 60_000) &&
+        streak < IDLE_STREAK_MAX;
       if (!wakeable && !idleDue) continue;
       // backoff yields to unread mail or a due idle tick — never to silence
       if (queued === 0 && !idleDue && !backoff.isReady(agent, last)) continue;
@@ -86,6 +95,11 @@ export async function runLoop(deps: OrchestratorDeps, opts: LoopOptions = {}): P
         cycleCounters.set(agent, nextCycle);
         report.cyclesRun++;
         backoff.record(agent, result.productive ?? false);
+        if (!result.productive && !wakeable) {
+          idleStreak.set(agent, streak + 1);
+        } else {
+          idleStreak.delete(agent);
+        }
         lastCycleAt.set(agent, Date.now());
         if (!result.failed) {
           progressedThisRound = true;

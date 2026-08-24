@@ -25,7 +25,7 @@ const DEFAULTS: LabConfig = {
   projectRoot: 'project',
   mode: 'directed',
   budgets: { maxTokensPerCycle: 20_000, maxCyclesPerHour: 30 },
-  cycleTimeoutMs: 120_000,
+  cycleTimeoutMs: 300_000,
   escalationStaleAfterMs: 3_600_000,
   backoffBaseMs: 500,
   backoffMaxMs: 60_000,

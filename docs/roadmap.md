@@ -332,7 +332,7 @@ interesting than a genuinely different runtime).
 
 Exit criteria:
 
-- Two-agent proposal flow births a working baby end-to-end in dry-run:
+- Two-agent proposal flow births a working baby end-to-end in dry-run: do they git? commmit/push?
   registry row, directory files, kickoff mail, scheduled cycles
 - Self-approval and malformed proposals are rejected with audit events
 - Stage-1 baby physically cannot move tasks or file non-report mail types
