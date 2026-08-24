@@ -77,6 +77,7 @@ the subject names the phase goal.
 | 2026-08-23 | S9 | Nursery: procreation protocol (PROPOSE AGENT → distinct approval → birth), nursery registry + agent dirs (identity/purpose/permissions), rules-engine BabyDriver in the scheduler loop, stage-1 permission gateway; live run continues separately | 66/66 pass · build green · dry-run green (isolated lab-dryrun.db) | 45053b7 |
 | 2026-08-23 | S10 | Promotions (PROMOTE AGENT → dual approval, one-stage rule, permissions mirror), babyStats, idea-neutrality audit + `nursery` subcommand; roadmap complete — next: polish + observe live colonies | 71/71 pass · build green · dry-run green | 691ad08 |
 | 2026-08-23 | S11 | Colony ops: daemon `--live` (idle ticks, no quiet-round exit), budget exhaustion cooldown, real token/cost/model capture (migration 005), `stats` command, dashboard SSE push; first live colony ended after 3 cycles due to old stall-exit — rerun recommended | 75/75 pass · build green · dry-run green | 4e99009 |
+| 2026-08-23 | S11.1 | Overnight findings fixed: workspace sandbox escape (.git exact-path check), dispute-thread livelock now counts TASK/WARNING standoffs, idle-tick streak cap (5 unproductive → stop), 300s default cycle timeout; colony built md-kb MVP (store+CLI+17 tests) despite sandbox bug; ~600k tokens total | 77/77 pass · build green · dry-run green | c99add3 |
 
 <!--
 Add one row per sprint at completion:
