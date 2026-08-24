@@ -333,9 +333,13 @@ async function main(): Promise<void> {
   else if (cmd === 'reset') await reset();
   else if (cmd === 'nursery') await nurseryCmd();
   else if (cmd === 'stats') stats();
-  else if (cmd === undefined || cmd === 'run' || cmd.startsWith('--')) await run();
+  else if (cmd === 'serve') {
+    const { startServe } = await import('./serve.js');
+    const app = await startServe(Number(process.env.ANTFARM_SERVE_PORT ?? 4177));
+    console.log(`antfarm serve: control API + dashboard on http://127.0.0.1:${app.port}`);
+  } else if (cmd === undefined || cmd === 'run' || cmd.startsWith('--')) await run();
   else {
-    console.error(`unknown command: ${cmd} (try: init | reset | nursery | stats | run)`);
+    console.error(`unknown command: ${cmd} (try: init | reset | nursery | stats | serve | run)`);
     process.exit(1);
   }
 }

@@ -19,6 +19,8 @@ export interface LoopOptions {
    */
   persistent?: boolean;
   idleTickMs?: number;
+  /** graceful external stop (serve mode): checked between rounds */
+  signal?: AbortSignal;
 }
 
 export interface LoopReport {
@@ -55,6 +57,7 @@ export async function runLoop(deps: OrchestratorDeps, opts: LoopOptions = {}): P
   const cfg = loadConfig();
 
   for (let round = 1; round <= maxRounds; round++) {
+    if (opts.signal?.aborted) break;
     report.rounds = round;
     let progressedThisRound = false;
 

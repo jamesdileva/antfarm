@@ -13,6 +13,7 @@
     "test": "npx vitest run"
   },
   "dependencies": {
+    "@antfarm/dashboard": "*",
     "@antfarm/db": "*",
     "@opencode-ai/sdk": "^1.0.0",
     "simple-git": "^3.27.0",
