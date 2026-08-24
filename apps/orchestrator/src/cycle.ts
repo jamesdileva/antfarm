@@ -19,6 +19,8 @@ export interface OrchestratorDeps {
   usageFor?: (output: ActionsOutputT) => { tokensIn: number; tokensOut: number };
   /** wall-clock cap per cycle; exceeding it marks the session timed_out */
   cycleTimeoutMs?: number;
+  /** session GC: delete opencode sessions after full capture in lab.db */
+  sessionGc?: boolean;
 }
 
 export interface CycleResult {
@@ -73,6 +75,7 @@ export async function runCycle(deps: OrchestratorDeps, agent: string, cycle: num
         actor: agent,
         payload: { sessionId: session.id, timeoutMs: err.ms },
       });
+      await disposeIfGc(deps, driver, agent);
       return { agent, status: 'done', sessionId: session.id, timedOut: true, failed: true };
     }
     // Malformed-output teaching loop (guide §4.2): the environment files a
@@ -92,6 +95,7 @@ export async function runCycle(deps: OrchestratorDeps, agent: string, cycle: num
       });
     }
     repos.events.append({ kind: 'cycle_failed', actor: agent, payload: { error: truncate(String(err), 300) } });
+    await disposeIfGc(deps, driver, agent);
     return { agent, status: 'done', sessionId: session.id, productive: false, failed: true };
   }
 
@@ -115,7 +119,23 @@ export async function runCycle(deps: OrchestratorDeps, agent: string, cycle: num
     repos.state.setDecisionPointer(agent, decisionEvents[decisionEvents.length - 1]!.id);
   }
 
+  await disposeIfGc(deps, driver, agent);
   return { agent, status: 'done', sessionId: session.id, productive };
+}
+
+/** Session GC (S12): opencode transcript is disposable once captured. */
+async function disposeIfGc(deps: OrchestratorDeps, driver: AgentDriver, agent: string): Promise<void> {
+  if (!deps.sessionGc) return;
+  try {
+    const d = driver as { disposeSession?: (a: string) => Promise<void> };
+    await d.disposeSession?.(agent);
+  } catch (err) {
+    deps.repos.events.append({
+      kind: 'session_gc_failed',
+      actor: agent,
+      payload: { error: String(err).slice(0, 200) },
+    });
+  }
 }
 
 async function withTimeout<T>(p: Promise<T>, ms: number | undefined, onTimeout: () => void): Promise<T> {

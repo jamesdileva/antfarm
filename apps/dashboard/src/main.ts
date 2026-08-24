@@ -149,6 +149,8 @@ function page(): string {
 <tr><th>model</th><td><input id="s-model" placeholder="provider/model (blank = opencode default)" style="width:340px"></td></tr>
 <tr><th>maxTokensPerCycle</th><td><input id="s-tokens" type="number" min="1000"></td></tr>
 <tr><th>maxCyclesPerHour</th><td><input id="s-cycles" type="number" min="1"></td></tr>
+<tr><th>workspacePath</th><td><input id="s-ws" placeholder="external repo (blank = project/workspace)" style="width:340px"></td></tr>
+<tr><th>sessionGc</th><td><input id="s-gc" type="checkbox"> delete opencode sessions after capture</td></tr>
 <tr><th>idleTickMs</th><td><input id="s-idle" type="number" min="5000"></td></tr>
 <tr><th>exhaustionCooldownMs</th><td><input id="s-cool" type="number" min="0"></td></tr>
 </table>
@@ -200,6 +202,8 @@ async function loadSettings() {
     const cfg = await (await fetch('/api/settings')).json();
     if (cfg.error !== undefined) throw new Error('settings API unavailable');
     document.getElementById('s-model').value = cfg.model ?? '';
+    document.getElementById('s-ws').value = cfg.workspacePath ?? '';
+    document.getElementById('s-gc').checked = cfg.sessionGc ?? false;
     document.getElementById('s-tokens').value = cfg.budgets?.maxTokensPerCycle ?? '';
     document.getElementById('s-cycles').value = cfg.budgets?.maxCyclesPerHour ?? '';
     document.getElementById('s-idle').value = cfg.idleTickMs ?? '';
@@ -213,8 +217,11 @@ async function loadSettings() {
 document.getElementById('save').onclick = async () => {
   const num = (id) => { const v = Number(document.getElementById(id).value); return Number.isFinite(v) && v > 0 ? v : undefined; };
   const modelVal = document.getElementById('s-model').value.trim();
+  const wsVal = document.getElementById('s-ws').value.trim();
   const patch = {
     ...(modelVal ? { model: modelVal } : {}),
+    ...(wsVal ? { workspacePath: wsVal } : {}),
+    sessionGc: document.getElementById('s-gc').checked,
     budgets: { maxTokensPerCycle: num('s-tokens'), maxCyclesPerHour: num('s-cycles') },
     idleTickMs: num('s-idle'),
     exhaustionCooldownMs: num('s-cool'),

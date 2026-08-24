@@ -18,9 +18,10 @@ import {
  */
 export interface OpencodeSessionClient {
   session: {
-    create(args: { body: { title?: string } }): Promise<{ data: { id: string } }>;
+    create(args: { body: { title?: string }; query?: { directory?: string } }): Promise<{ data: { id: string } }>;
     prompt(args: {
       path: { id: string };
+      query?: { directory?: string };
       body: {
         parts: Array<{ type: 'text'; text: string }>;
         /** drive sheet + personality — verified present on installed SDK */
@@ -32,6 +33,8 @@ export interface OpencodeSessionClient {
         parts: Array<{ type: string; text?: string }>;
       };
     }>;
+  } & {
+    delete?(args: { path: { id: string } }): Promise<unknown>;
   };
 }
 
@@ -132,6 +135,12 @@ export interface OpenCodeDriverOptions {
   driveSheet: DriveSheet;
   /** incentive overlay name (see PERSONALITIES) */
   personality?: string;
+  /**
+   * directory the agents' file tools operate in (external targeting, S12).
+   * Verified against installed SDK: session.create/prompt accept
+   * query.directory.
+   */
+  directory?: string;
   /** extra static context injected every cycle (e.g. PROJECT_GOAL.md) */
   context?: () => string;
 }
@@ -147,6 +156,7 @@ export class OpenCodeDriver implements AgentDriver {
   readonly sheet: DriveSheet;
   /** most recent usage sample per agent — read by the orchestrator */
   private usageSamples = new Map<string, UsageSample>();
+  private sessionIds = new Map<string, string>();
 
   constructor(opts: OpenCodeDriverOptions & { client?: OpencodeSessionClient }) {
     this.opts = opts;
@@ -154,11 +164,24 @@ export class OpenCodeDriver implements AgentDriver {
       throw new Error('OpenCodeDriver requires a client — use createManagedClient() in live mode');
     }
     this.client = opts.client;
-    this.sheet = opts.driveSheet ?? SHEETS.agent;
+    this.sheet = opts.driveSheet ?? BUILDER;
   }
 
   lastUsage(agent: string): UsageSample | undefined {
     return this.usageSamples.get(agent);
+  }
+
+  /** Session id from the most recent run — used by session GC. */
+  lastSessionId(agent: string): string | undefined {
+    return this.sessionIds.get(agent);
+  }
+
+  /** Delete the stored opencode session (session GC, S12). */
+  async disposeSession(agent: string): Promise<void> {
+    const id = this.sessionIds.get(agent);
+    if (!id) return;
+    this.sessionIds.delete(agent);
+    await this.client.session.delete?.({ path: { id } });
   }
 
   static sheetFor(agent: string): DriveSheet {
@@ -174,10 +197,13 @@ export class OpenCodeDriver implements AgentDriver {
   }
 
   async run(ctx: DriverContext): Promise<ActionsOutputT> {
+    const directory = this.opts.directory ? { directory: this.opts.directory } : undefined;
     const created = await this.client.session.create({
       body: { title: `${ctx.agent} · cycle ${ctx.cycle}` },
+      ...(directory ? { query: directory } : {}),
     });
     const sessionId = created.data.id;
+    this.sessionIds.set(ctx.agent, sessionId);
 
     // The installed SDK has no json_schema structured output on prompt;
     // we instruct-for-JSON and validate with zod (teaching loop handles
@@ -197,6 +223,7 @@ export class OpenCodeDriver implements AgentDriver {
 
     const result = await this.client.session.prompt({
       path: { id: sessionId },
+      ...(directory ? { query: directory } : {}),
       body: {
         parts: [{ type: 'text', text: ctx.situation }],
         system: systemText,

@@ -1,4 +1,5 @@
 import { mkdirSync, existsSync, rmSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { join } from 'node:path';
 import { createRepos, openDb } from '@antfarm/db';
 import { Budgets } from './budgets.js';
@@ -9,7 +10,7 @@ import { OpenCodeDriver, createManagedClient, assertServerHealthy } from './driv
 import { Workspace, workspacePath } from './workspace.js';
 import { seedGoal } from './goal.js';
 import { recoverOrphans } from './recover.js';
-import { loadConfig, type LabConfig } from './config.js';
+import { loadConfig, writeConfig, type LabConfig } from './config.js';
 import { harnessSummary, runHarness } from './harness.js';
 import { BabyDriver } from './drivers/baby.js';
 import { auditNursery, babyStats } from './nursery.js';
@@ -48,9 +49,31 @@ function hasFlag(flag: string): boolean {
 }
 
 async function init(): Promise<void> {
+  const targetIdx = process.argv.indexOf('--target');
   const goal = argValue('--goal');
+  if (targetIdx >= 0) {
+    const target = process.argv[targetIdx + 1];
+    if (!target || !existsSync(target)) {
+      console.error(`--target path does not exist: ${target ?? '(missing)'}`);
+      process.exit(1);
+    }
+    if (!existsSync(join(target, '.git'))) {
+      console.error(`--target is not a git repo (no .git): ${target}`);
+      process.exit(1);
+    }
+    // warn about an occupied lab — retargeting implies a fresh experiment
+    const dbPath = join(PROJECT_ROOT, 'lab.db');
+    if (existsSync(dbPath)) {
+      console.log('note: lab.db exists — run `npm start -- reset --yes` for a fresh per-project lab');
+    }
+    const abs = resolve(target);
+    const cfg = loadConfig();
+    writeConfig('lab.config.json', { ...cfg, workspacePath: abs });
+    console.log(`workspace target set: ${abs}`);
+  }
   if (!goal) {
-    console.error('usage: npm start -- init --goal "<text>"   (Mode 1: the human authors the goal)');
+    if (targetIdx >= 0) return;
+    console.error('usage: npm start -- init --goal "<text>" [--target <path>]');
     process.exit(1);
   }
   mkdirSync(PROJECT_ROOT, { recursive: true });
@@ -92,7 +115,9 @@ async function makeDeps(dbPath: string, live: boolean): Promise<OrchestratorDeps
       }
     }
 
-    const workspace = new Workspace(workspacePath(projectRoot));
+    // External targeting (S12): default lab sandbox or a configured repo
+    const wsRoot = cfg.workspacePath ?? workspacePath(projectRoot);
+    const workspace = new Workspace(wsRoot);
     await workspace.ensureRepo();
 
     // Cold-start bootstrap: a pristine lab has zero wake triggers (no mail,
@@ -116,6 +141,7 @@ async function makeDeps(dbPath: string, live: boolean): Promise<OrchestratorDeps
         client: managed.client,
         driveSheet: OpenCodeDriver.sheetFor(agent),
         personality: cfg.personalities[agent],
+        directory: wsRoot,
       });
     }
     // Nursery actors join the same scheduler loop with their own runtime
@@ -131,6 +157,7 @@ async function makeDeps(dbPath: string, live: boolean): Promise<OrchestratorDeps
       situation: {
         projectRoot,
         mode: cfg.mode,
+        workspaceDir: wsRoot,
         workspaceSummary: await workspace.diffSummary(),
       },
       signals: async (agent) => ({ ownedTaskChanged: false, workspaceChanged: await workspace.poll(agent) }),
@@ -138,13 +165,14 @@ async function makeDeps(dbPath: string, live: boolean): Promise<OrchestratorDeps
         await workspace.markSeen(agent);
         // refresh checks between cycles so agents see fresh PASS/FAIL
         await runHarness(repos, {
-          workspaceDir: workspacePath(projectRoot),
+          workspaceDir: wsRoot,
           buildCmd: cfg.harness.buildCmd ?? 'npm run --if-present build',
-          testCmd: cfg.harness.testCmd ?? 'npm test',
+          testCmd: cfg.harness.testCmd ?? 'npm run --if-present test',
           timeoutMs: cfg.harness.timeoutMs,
         });
       },
       cycleTimeoutMs: cfg.cycleTimeoutMs,
+      sessionGc: cfg.sessionGc,
     };
   }
 

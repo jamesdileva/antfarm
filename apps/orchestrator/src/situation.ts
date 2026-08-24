@@ -5,6 +5,8 @@ import { harnessSummary } from './harness.js';
 export interface SituationContext {
   projectRoot: string;
   workspaceSummary?: string | null;
+  /** absolute path of the (possibly external) workspace — shown to agents */
+  workspaceDir?: string;
   /** constrained = agents must decide what to build before building (Mode 2) */
   mode?: 'directed' | 'constrained';
 }
@@ -66,6 +68,9 @@ export function buildSituation(repos: Repos, agent: string, ctx: SituationContex
         ]
       : []),
     ...(memory ? ['YOUR MEMORY.md (your own compacted working memory):', memory, ''] : []),
+    ...(ctx.workspaceDir
+      ? ['WORKSPACE (all file work happens here):', `  ${ctx.workspaceDir}`, '']
+      : []),
     ...(ctx.workspaceSummary ? ['Workspace:', `  ${ctx.workspaceSummary}`, ''] : []),
     'Checks:',
     ...harnessSummary(repos).map((s) => `  ${s}`),

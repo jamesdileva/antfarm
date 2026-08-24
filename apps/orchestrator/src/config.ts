@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 export interface LabConfig {
@@ -19,6 +19,10 @@ export interface LabConfig {
   idleTickMs: number;
   /** token-cap exhaustion auto-unpark window */
   exhaustionCooldownMs: number;
+  /** delete opencode sessions after full capture in lab.db (S12) */
+  sessionGc: boolean;
+  /** external target repo for agents to work in; default = project/workspace */
+  workspacePath?: string;
 }
 
 const DEFAULTS: LabConfig = {
@@ -33,6 +37,7 @@ const DEFAULTS: LabConfig = {
   personalities: {},
   idleTickMs: 60_000,
   exhaustionCooldownMs: 600_000,
+  sessionGc: false,
 };
 
 /** Shallow-merge a lab.config.json over the defaults; absent file is fine. */
@@ -48,6 +53,11 @@ export function loadConfigFrom(path: string): LabConfig {
   return mergeConfig(DEFAULTS, raw);
 }
 
+/** Persist a full config to an explicit file path. */
+export function writeConfig(path: string, cfg: LabConfig): void {
+  writeFileSync(path, JSON.stringify(cfg, null, 2), 'utf8');
+}
+
 export function mergeConfig(base: LabConfig, raw: unknown): LabConfig {
   const out = structuredClone(base);
   if (typeof raw !== 'object' || raw === null) return out;
@@ -61,6 +71,8 @@ export function mergeConfig(base: LabConfig, raw: unknown): LabConfig {
   if (typeof r.backoffMaxMs === 'number') out.backoffMaxMs = r.backoffMaxMs;
   if (typeof r.idleTickMs === 'number') out.idleTickMs = r.idleTickMs;
   if (typeof r.exhaustionCooldownMs === 'number') out.exhaustionCooldownMs = r.exhaustionCooldownMs;
+  if (typeof r.sessionGc === 'boolean') out.sessionGc = r.sessionGc;
+  if (typeof r.workspacePath === 'string' && r.workspacePath.trim()) out.workspacePath = r.workspacePath.trim();
   if (typeof r.budgets === 'object' && r.budgets !== null) {
     const b = r.budgets as Record<string, unknown>;
     if (typeof b.maxTokensPerCycle === 'number') out.budgets.maxTokensPerCycle = b.maxTokensPerCycle;

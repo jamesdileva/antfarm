@@ -332,7 +332,7 @@ interesting than a genuinely different runtime).
 
 Exit criteria:
 
-- Two-agent proposal flow births a working baby end-to-end in dry-run: do they git? commmit/push?
+- Two-agent proposal flow births a working baby end-to-end in dry-run:
   registry row, directory files, kickoff mail, scheduled cycles
 - Self-approval and malformed proposals are rejected with audit events
 - Stage-1 baby physically cannot move tasks or file non-report mail types
@@ -371,6 +371,30 @@ agent roles in drive sheets or cycle prompts. The experiment is precisely
 whether the idea emerges.
 
 ## Post-roadmap sprints
+
+### Sprint 12 scope (2026-08-24) — session GC + external targeting
+
+Per `docs/sprint-12-nexus.md`. md-kb MVP archived to
+`../md-kb-archive/` before this sprint's reset.
+
+Goals:
+
+- **Session GC** (`sessionGc` setting, default off): opencode sessions
+  deleted after full capture in lab.db; Settings toggle; failure paths
+  dispose too
+- **External targeting** (`workspacePath` config): agents' opencode sessions
+  run with `query.directory` set to the target repo; workspace bootstrap,
+  harness, wake signals all redirect; `init --target` helper validates and
+  wires everything; per-project labs via reset+init
+- Harness soft-skips scriptless repos (`--if-present` defaults, SKIPPED
+  event kind)
+
+Exit criteria:
+
+- GC on: zero session accumulation in opencode, full audit trail in lab.db
+- Colony targeted at nexus reads its docs and commits agent-authored work
+  to nexus's own git history (its `.git`, not the lab's)
+- Antfarm default config unchanged and green
 
 ### Sprint 11 scope (2026-08-23) — colony operations
 
