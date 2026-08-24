@@ -83,6 +83,7 @@ the subject names the phase goal.
 | 2026-08-24 | S12.2 | Nexus drama root-caused: agent-a's long cycles die at ~5min with fetch failed (server/provider window, not our timeout) → same-session re-prompt retry preserves tool progress; GC now only disposes successful cycles (interrupted sessions are the only copy); human mail + board task injected for Tauri integration.md + commit cadence | 83/83 pass · build green | 034ca69 |
 | 2026-08-24 | S12.4 | Board friction fixed: proposed→done/blocked legal, reviewer close/block rights (assignee keeps activate), harness pointed at nexus pytest (backend/.venv; 91 tests PASS verified); 42 move-rejections decomposed and eliminated; agents dropped+re-dropped human task #1 → drop-protection live | 84/84 pass · build green | 2ea9fc9 |
 | 2026-08-24 | S12.5 | Builder segment-commit discipline (ONE committable slice per cycle — attacks the ~5min death window at cause), prompt_retried visibility event; board reconciled to git reality by human (#2/#4/#5 done, #6 dup); push-permission standing policy mailed to both agents | 86/86 pass · build green | bd72d87 |
+| 2026-08-24 | S12.6 | Transient APIError responses (provider load) now get same-session resume like fetch-failures; auth errors still fail fast; drop-protection verified live (agent-b blocked twice on human task #1); colony reached nexus S14, board pipeline self-sustaining (#8–#13 agent-created+closed) | 88/88 pass · build green | c677569 |
 
 <!--
 Add one row per sprint at completion:
