@@ -75,6 +75,7 @@ the subject names the phase goal.
 | 2026-08-23 | S7.1–8 | Live-run fixes: managed opencode server w/ ephemeral port + health probe, cold-start kickoff mail; clean Mode 2 validation (3 cycles, 1 DECISION, notes app chosen unprompted); web dashboard + Sentinel preflight; Phase 4 complete | 60/60 pass · build green · harness PASS on live workspace | 37bd9ca |
 | 2026-08-23 | S9 | Nursery: procreation protocol (PROPOSE AGENT → distinct approval → birth), nursery registry + agent dirs (identity/purpose/permissions), rules-engine BabyDriver in the scheduler loop, stage-1 permission gateway; live run continues separately | 66/66 pass · build green · dry-run green (isolated lab-dryrun.db) | 45053b7 |
 | 2026-08-23 | S10 | Promotions (PROMOTE AGENT → dual approval, one-stage rule, permissions mirror), babyStats, idea-neutrality audit + `nursery` subcommand; roadmap complete — next: polish + observe live colonies | 71/71 pass · build green · dry-run green | 691ad08 |
+| 2026-08-23 | S11 | Colony ops: daemon `--live` (idle ticks, no quiet-round exit), budget exhaustion cooldown, real token/cost/model capture (migration 005), `stats` command, dashboard SSE push; first live colony ended after 3 cycles due to old stall-exit — rerun recommended | 75/75 pass · build green · dry-run green | 4e99009 |
 
 <!--
 Add one row per sprint at completion:
