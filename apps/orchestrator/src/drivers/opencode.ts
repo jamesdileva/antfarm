@@ -221,14 +221,30 @@ export class OpenCodeDriver implements AgentDriver {
       .filter(Boolean)
       .join('\n');
 
-    const result = await this.client.session.prompt({
-      path: { id: sessionId },
-      ...(directory ? { query: directory } : {}),
-      body: {
-        parts: [{ type: 'text', text: ctx.situation }],
-        system: systemText,
-      },
-    });
+    let result;
+    try {
+      result = await this.client.session.prompt({
+        path: { id: sessionId },
+        ...(directory ? { query: directory } : {}),
+        body: {
+          parts: [{ type: 'text', text: ctx.situation }],
+          system: systemText,
+        },
+      });
+    } catch (err) {
+      // Long cycles on slow models can outlive server/provider request
+      // windows (~5min observed). Tool progress lives IN the session —
+      // re-prompt it to continue rather than throwing the work away.
+      if (!/fetch failed|network|econn|socket|abort/i.test(String(err))) throw err;
+      result = await this.client.session.prompt({
+        path: { id: sessionId },
+        ...(directory ? { query: directory } : {}),
+        body: {
+          parts: [{ type: 'text', text: 'Your previous response was interrupted. Continue where you left off and respond with your final JSON actions.' }],
+          system: systemText,
+        },
+      });
+    }
 
     const info = result.data.info;
     this.usageSamples.set(ctx.agent, extractUsage(info));

@@ -92,22 +92,10 @@ describe('session GC', () => {
     db.close();
   });
 
-  it('disposes on failed cycles too', async () => {
+  it('does NOT dispose failed cycles — interrupted sessions hold progress', async () => {
     const db = openDb(join(dir, 'lab3.db'));
     const repos = createRepos(db);
-    const client = {
-      session: {
-        create: async () => ({ data: { id: 'sess-x' } }),
-        prompt: async () => ({
-          data: {
-            info: { error: { name: 'ProviderAuthError', message: 'no key' } },
-            parts: [],
-          },
-        }),
-        delete: async (args: { path: { id: string } }) => true,
-      } as unknown as OpencodeSessionClient['session'],
-    };
-    void client;
+    const deletedIds: string[] = [];
     const driver = new OpenCodeDriver({
       client: {
         session: {
@@ -123,13 +111,12 @@ describe('session GC', () => {
       } as unknown as OpencodeSessionClient,
       driveSheet: undefined as never,
     });
-    const deletedIds: string[] = [];
     const d = deps(repos, driver);
     d.sessionGc = true;
 
     await runCycle(d, 'agent-a', 1);
-    expect(deletedIds).toEqual(['sess-x']); // disposed
-    expect(driver.lastSessionId('agent-a')).toBeUndefined();
+    expect(deletedIds).toEqual([]); // kept — recoverable
+    expect(driver.lastSessionId('agent-a')).toBe('sess-x');
     expect(repos.sessions.byId(1).status).toBe('failed');
     db.close();
   });

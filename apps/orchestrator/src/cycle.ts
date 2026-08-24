@@ -75,7 +75,7 @@ export async function runCycle(deps: OrchestratorDeps, agent: string, cycle: num
         actor: agent,
         payload: { sessionId: session.id, timeoutMs: err.ms },
       });
-      await disposeIfGc(deps, driver, agent);
+      await disposeIfGc(deps, driver, agent, false);
       return { agent, status: 'done', sessionId: session.id, timedOut: true, failed: true };
     }
     // Malformed-output teaching loop (guide §4.2): the environment files a
@@ -95,7 +95,7 @@ export async function runCycle(deps: OrchestratorDeps, agent: string, cycle: num
       });
     }
     repos.events.append({ kind: 'cycle_failed', actor: agent, payload: { error: truncate(String(err), 300) } });
-    await disposeIfGc(deps, driver, agent);
+    // failed sessions may hold recoverable progress — never GC those
     return { agent, status: 'done', sessionId: session.id, productive: false, failed: true };
   }
 
@@ -119,13 +119,17 @@ export async function runCycle(deps: OrchestratorDeps, agent: string, cycle: num
     repos.state.setDecisionPointer(agent, decisionEvents[decisionEvents.length - 1]!.id);
   }
 
-  await disposeIfGc(deps, driver, agent);
+  await disposeIfGc(deps, driver, agent, true);
   return { agent, status: 'done', sessionId: session.id, productive };
 }
 
-/** Session GC (S12): opencode transcript is disposable once captured. */
-async function disposeIfGc(deps: OrchestratorDeps, driver: AgentDriver, agent: string): Promise<void> {
-  if (!deps.sessionGc) return;
+/**
+ * Session GC (S12): only SUCCESSFUL cycles are disposable. Failed or
+ * interrupted sessions may hold recoverable progress (nexus lesson:
+ * fetch-failed cycles die mid-work; the session is the only copy).
+ */
+async function disposeIfGc(deps: OrchestratorDeps, driver: AgentDriver, agent: string, ok: boolean): Promise<void> {
+  if (!deps.sessionGc || !ok) return;
   try {
     const d = driver as { disposeSession?: (a: string) => Promise<void> };
     await d.disposeSession?.(agent);
