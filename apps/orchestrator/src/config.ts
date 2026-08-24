@@ -49,7 +49,8 @@ export function loadConfig(projectDir = '.'): LabConfig {
 /** Load from an explicit file path (dashboard settings use this). */
 export function loadConfigFrom(path: string): LabConfig {
   if (!existsSync(path)) return structuredClone(DEFAULTS);
-  const raw: unknown = JSON.parse(readFileSync(path, 'utf8'));
+  // strip BOM — PowerShell-written configs carry one and JSON.parse rejects it
+  const raw: unknown = JSON.parse(readFileSync(path, 'utf8').replace(/^\uFEFF/, ''));
   return mergeConfig(DEFAULTS, raw);
 }
 

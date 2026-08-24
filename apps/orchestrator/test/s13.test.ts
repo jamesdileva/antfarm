@@ -49,4 +49,13 @@ describe('ANTFARM_HOME resolution (S13)', () => {
 
     rmSync(home, { recursive: true, force: true });
   });
+
+  it('tolerates a BOM at the start of lab.config.json (PowerShell-written)', () => {
+    const home = mkdtempSync(join(tmpdir(), 'antfarm-home3-'));
+    process.env.ANFARM_HOME = home;
+    const paths = homePaths();
+    writeFileSync(paths.config, '\uFEFF' + JSON.stringify({ model: 'x/y' }), 'utf8');
+    expect(loadConfigFrom(paths.config).model).toBe('x/y');
+    rmSync(home, { recursive: true, force: true });
+  });
 });
