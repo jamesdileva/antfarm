@@ -4,7 +4,11 @@
     "outDir": "dist",
     "rootDir": "src"
   },
-  "references": [{ "path": "../../packages/db" }, { "path": "../../apps/observer-cli" }],
+  "references": [
+    { "path": "../../packages/db" },
+    { "path": "../../apps/orchestrator" },
+    { "path": "../../apps/observer-cli" }
+  ],
   "include": ["src"],
   "exclude": ["**/*.test.ts"]
 }

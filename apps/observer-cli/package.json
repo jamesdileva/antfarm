@@ -8,7 +8,8 @@
     "test": "npx vitest run"
   },
   "dependencies": {
-    "@antfarm/db": "*"
+    "@antfarm/db": "*",
+    "@antfarm/orchestrator": "*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

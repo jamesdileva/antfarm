@@ -5,17 +5,18 @@ import { join } from 'node:path';
 import { openDb } from '@antfarm/db';
 import { buildView, type ObserverView } from '@antfarm/observer-cli';
 import { loadConfigFrom, mergeConfig, type LabConfig } from '@antfarm/orchestrator/config.js';
+import { antfarmHome } from '@antfarm/orchestrator/home.js';
 
 export function labDbPath(): string {
-  if (existsSync('lab.db')) return 'lab.db';
-  return join('project', 'lab.db');
+  const candidate = join(antfarmHome(), 'project', 'lab.db');
+  return existsSync(candidate) ? candidate : 'project/lab.db';
 }
 
 const esc = (s: unknown): string =>
   String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 /** Route handler — factored out for tests. */
-export function handle(dbPath: string, configPath = 'lab.config.json'): (req: IncomingMessage, res: ServerResponse) => void {
+export function handle(dbPath: string, configPath = join(antfarmHome(), 'lab.config.json')): (req: IncomingMessage, res: ServerResponse) => void {
   return (req, res) => {
     const url = (req.url ?? '/').split('?')[0]!;
     if (url === '/api/settings') {

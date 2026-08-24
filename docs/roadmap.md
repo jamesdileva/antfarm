@@ -427,6 +427,17 @@ Exit criteria:
 - `stats` shows non-zero real token/cost numbers and model ids after a
   live session; dashboard updates within ~1s of new events without polling
 
+## Phase 6 — Desktop (S13–15)
+
+**Goal:** standalone `Antfarm.exe` — full GUI lab lifecycle, Sentinel-indexable.
+
+Per `docs/sprint-13-desktop.md`: S13 data-home decoupling (`ANTFARM_HOME`),
+S14 Electron shell + orchestrator serve mode (control API + GUI lifecycle),
+S15 packaging at `release/win-unpacked/` + §7 preflight + feature tester.
+
+**Exit criteria:** double-click exe → dashboard; create+start a colony via
+GUI alone; Sentinel preflight green end-to-end.
+
 ## Later / backlog
 
 - >2 parent agents and role specialization (schema already supports it;

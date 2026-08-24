@@ -14,8 +14,7 @@ import { loadConfig, writeConfig, type LabConfig } from './config.js';
 import { harnessSummary, runHarness } from './harness.js';
 import { BabyDriver } from './drivers/baby.js';
 import { auditNursery, babyStats } from './nursery.js';
-
-export const PROJECT_ROOT = 'project';
+import { antfarmHome, homePaths } from './home.js';
 
 const demoScripts = {
   'agent-a': [
@@ -62,13 +61,13 @@ async function init(): Promise<void> {
       process.exit(1);
     }
     // warn about an occupied lab — retargeting implies a fresh experiment
-    const dbPath = join(PROJECT_ROOT, 'lab.db');
-    if (existsSync(dbPath)) {
+    const paths = homePaths(loadConfig().projectRoot);
+    if (existsSync(paths.db())) {
       console.log('note: lab.db exists — run `npm start -- reset --yes` for a fresh per-project lab');
     }
     const abs = resolve(target);
     const cfg = loadConfig();
-    writeConfig('lab.config.json', { ...cfg, workspacePath: abs });
+    writeConfig(paths.config, { ...cfg, workspacePath: abs });
     console.log(`workspace target set: ${abs}`);
   }
   if (!goal) {
@@ -76,14 +75,16 @@ async function init(): Promise<void> {
     console.error('usage: npm start -- init --goal "<text>" [--target <path>]');
     process.exit(1);
   }
-  mkdirSync(PROJECT_ROOT, { recursive: true });
-  const path = seedGoal(PROJECT_ROOT, goal);
+  const paths = homePaths(loadConfig().projectRoot);
+  mkdirSync(paths.project, { recursive: true });
+  const path = seedGoal(paths.project, goal);
   console.log(`goal seeded: ${path}`);
 }
 
 async function makeDeps(dbPath: string, live: boolean): Promise<OrchestratorDeps> {
   const cfg: LabConfig = loadConfig();
-  const projectRoot = cfg.projectRoot;
+  const paths = homePaths(cfg.projectRoot);
+  const projectRoot = paths.project;
   mkdirSync(projectRoot, { recursive: true });
   const db = openDb(dbPath);
   const swept = recoverOrphans(db);
@@ -201,7 +202,7 @@ async function run(): Promise<void> {
   // Isolation rule: dry-run NEVER shares a database with live runs —
   // demo fixtures must not leak into real experiments (S8 lesson).
   const dbName = live ? 'lab.db' : 'lab-dryrun.db';
-  const deps = await makeDeps(join(cfg.projectRoot, dbName), live);
+  const deps = await makeDeps(homePaths(cfg.projectRoot).db(dbName), live);
 
   // Seed one proposed task so scripted moves have a target (dry-run only).
   if (!live && deps.repos.tasks.list().length === 0) {
@@ -235,16 +236,16 @@ async function run(): Promise<void> {
 }
 
 async function reset(): Promise<void> {
-  const cfg = loadConfig();
   const all = hasFlag('--yes');
-  const dbPath = join(cfg.projectRoot, 'lab.db');
+  const paths = homePaths(loadConfig().projectRoot);
+  const dbPath = paths.db();
   rmSync(dbPath, { force: true });
   rmSync(`${dbPath}-wal`, { force: true });
   rmSync(`${dbPath}-shm`, { force: true });
   console.log(`removed ${dbPath}`);
   if (all) {
-    rmSync(cfg.projectRoot, { recursive: true, force: true });
-    console.log(`removed ${cfg.projectRoot}/ entirely (--yes)`);
+    rmSync(paths.project, { recursive: true, force: true });
+    console.log(`removed ${paths.project}/ entirely (--yes)`);
   } else {
     console.log('workspace/shared/agent dirs kept; pass --yes to wipe the whole project/ tree');
   }
@@ -252,7 +253,8 @@ async function reset(): Promise<void> {
 
 async function nurseryCmd(): Promise<void> {
   const cfg = loadConfig();
-  const dbPath = join(cfg.projectRoot, 'lab.db');
+  const paths = homePaths(cfg.projectRoot);
+  const dbPath = paths.db();
   if (!existsSync(dbPath)) {
     console.error(`no lab database at ${dbPath}`);
     process.exit(1);
@@ -268,7 +270,7 @@ async function nurseryCmd(): Promise<void> {
   }
 
   for (const baby of babies) {
-    const stats = babyStats(repos, cfg.projectRoot, baby.id);
+    const stats = babyStats(repos, paths.project, baby.id);
     const creators = JSON.parse(baby.created_by).join(', ');
     console.log(`${baby.id} "${baby.name}" — stage ${baby.stage} (${baby.runtime})`);
     console.log(`  parents: ${creators}`);
@@ -279,7 +281,7 @@ async function nurseryCmd(): Promise<void> {
     );
   }
 
-  const audit = auditNursery(repos, cfg.projectRoot);
+  const audit = auditNursery(repos, paths.project);
   const failures = audit.filter((a) => !a.ok);
   console.log(`idea-neutrality audit: ${audit.length - failures.length}/${audit.length} traced`);
   for (const fail of failures) console.log(`  FAIL ${fail.id}: ${fail.reason}`);
@@ -288,7 +290,7 @@ async function nurseryCmd(): Promise<void> {
 
 function stats(): void {
   const cfg = loadConfig();
-  const dbPath = join(cfg.projectRoot, 'lab.db');
+  const dbPath = homePaths(cfg.projectRoot).db();
   if (!existsSync(dbPath)) {
     console.error(`no lab database at ${dbPath}`);
     process.exit(1);

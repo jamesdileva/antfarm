@@ -1,11 +1,13 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { antfarmHome } from '@antfarm/orchestrator/home.js';
 import { buildView } from './view.js';
 import { render } from './render.js';
 
 function dbPath(): string {
-  if (existsSync('lab.db')) return 'lab.db';
-  return join('project', 'lab.db');
+  const root = antfarmHome();
+  if (existsSync(join(root, 'lab.db'))) return join(root, 'lab.db');
+  return join(root, 'project', 'lab.db');
 }
 
 async function main(): Promise<void> {

@@ -6,7 +6,8 @@
   "main": "./src/main.ts",
   "exports": {
     ".": "./src/main.ts",
-    "./config.js": "./src/config.ts"
+    "./config.js": "./src/config.ts",
+    "./home.js": "./src/home.ts"
   },
   "scripts": {
     "test": "npx vitest run"
