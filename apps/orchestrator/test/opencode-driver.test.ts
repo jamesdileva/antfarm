@@ -123,6 +123,16 @@ describe('OpenCodeDriver', () => {
     expect(() => extractJson('{"broken": ')).toThrow(/no JSON object|not valid JSON/);
   });
 
+  it('survives trailing junk AFTER a valid object (nexus parse failure)', () => {
+    // regression: lastIndexOf('}') grabbed braces from trailing prose
+    const response =
+      '{"mails":[{"to":"agent-a","type":"STATUS","subject":"s","body":"note with } brace"}],"summary":"ok"}' +
+      '\n\nNote: task #12 remains open. Next steps {TBD} — will follow up.';
+    const parsed = extractJson(response) as { summary: string };
+    expect(parsed.summary).toBe('ok');
+    expect((parsed as { mails: unknown[] }).mails).toHaveLength(1);
+  });
+
   it('resumes the same session once on transient APIError responses', async () => {
     const calls = { prompts: 0, created: [] as string[] };
     const client: OpencodeSessionClient = {

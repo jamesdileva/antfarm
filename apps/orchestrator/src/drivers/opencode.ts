@@ -300,6 +300,17 @@ export class OpenCodeDriver implements AgentDriver {
 export function extractJson(text: string): unknown {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
   const candidate = (fenced?.[1] ?? text).trim();
+  // Preferred: first BALANCED object — models love appending prose like
+  // "hope that helps!" after the closing brace (nexus lesson: lastIndexOf
+  // grabs stray braces from trailing prose and poisons the parse).
+  const balanced = extractBalancedObject(candidate);
+  if (balanced !== null) {
+    try {
+      return JSON.parse(balanced);
+    } catch {
+      /* fall through to legacy behavior */
+    }
+  }
   const start = candidate.indexOf('{');
   const end = candidate.lastIndexOf('}');
   if (start === -1 || end === -1 || end <= start) {
@@ -310,6 +321,29 @@ export function extractJson(text: string): unknown {
   } catch (err) {
     throw new Error(`response was not valid JSON: ${(err as Error).message}`);
   }
+}
+
+/** Scan for the first top-level {...} object, respecting strings/escapes. */
+function extractBalancedObject(s: string): string | null {
+  const start = s.indexOf('{');
+  if (start === -1) return null;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < s.length; i++) {
+    const c = s[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (c === '\\') escaped = true;
+      else if (c === '"') inString = false;
+    } else if (c === '"') inString = true;
+    else if (c === '{') depth++;
+    else if (c === '}') {
+      depth--;
+      if (depth === 0) return s.slice(start, i + 1);
+    }
+  }
+  return null;
 }
 
 /** Defensive token/cost/model extraction across SDK shape variations. */
