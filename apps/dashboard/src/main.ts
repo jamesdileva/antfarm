@@ -181,12 +181,19 @@ refresh();
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
 
 async function loadSettings() {
-  const cfg = await (await fetch('/api/settings')).json();
-  document.getElementById('s-model').value = cfg.model ?? '';
-  document.getElementById('s-tokens').value = cfg.budgets?.maxTokensPerCycle ?? '';
-  document.getElementById('s-cycles').value = cfg.budgets?.maxCyclesPerHour ?? '';
-  document.getElementById('s-idle').value = cfg.idleTickMs ?? '';
-  document.getElementById('s-cool').value = cfg.exhaustionCooldownMs ?? '';
+  try {
+    const cfg = await (await fetch('/api/settings')).json();
+    if (cfg.error !== undefined) throw new Error('settings API unavailable');
+    document.getElementById('s-model').value = cfg.model ?? '';
+    document.getElementById('s-tokens').value = cfg.budgets?.maxTokensPerCycle ?? '';
+    document.getElementById('s-cycles').value = cfg.budgets?.maxCyclesPerHour ?? '';
+    document.getElementById('s-idle').value = cfg.idleTickMs ?? '';
+    document.getElementById('s-cool').value = cfg.exhaustionCooldownMs ?? '';
+  } catch {
+    const msg = document.getElementById('save-msg');
+    msg.textContent = 'settings unavailable — restart the dashboard (npm run dashboard)';
+    msg.style.color = '#f85149';
+  }
 }
 document.getElementById('save').onclick = async () => {
   const num = (id) => { const v = Number(document.getElementById(id).value); return Number.isFinite(v) && v > 0 ? v : undefined; };

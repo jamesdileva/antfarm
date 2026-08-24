@@ -12,6 +12,7 @@
     "start": "npx tsx apps/orchestrator/src/main.ts",
     "observe": "npx tsx apps/observer-cli/src/main.ts",
     "dashboard": "npx tsx apps/dashboard/src/main.ts",
+    "stats": "npx tsx apps/orchestrator/src/main.ts stats",
     "build": "npx tsc -b",
     "test": "npx vitest run"
   },

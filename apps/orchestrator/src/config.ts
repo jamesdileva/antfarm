@@ -54,6 +54,7 @@ export function mergeConfig(base: LabConfig, raw: unknown): LabConfig {
   const r = raw as Record<string, unknown>;
   if (typeof r.projectRoot === 'string') out.projectRoot = r.projectRoot;
   if (r.mode === 'directed' || r.mode === 'constrained') out.mode = r.mode;
+  if (typeof r.model === 'string') out.model = r.model;
   if (typeof r.cycleTimeoutMs === 'number') out.cycleTimeoutMs = r.cycleTimeoutMs;
   if (typeof r.escalationStaleAfterMs === 'number') out.escalationStaleAfterMs = r.escalationStaleAfterMs;
   if (typeof r.backoffBaseMs === 'number') out.backoffBaseMs = r.backoffBaseMs;
