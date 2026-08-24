@@ -72,7 +72,8 @@ describe('mail repo', () => {
 describe('task repo state machine', () => {
   it('allows only legal transitions', () => {
     expect(canTransition('proposed', 'active')).toBe(true);
-    expect(canTransition('proposed', 'done')).toBe(false);
+    expect(canTransition('proposed', 'done')).toBe(true); // finish-without-ceremony
+    expect(canTransition('proposed', 'blocked')).toBe(true);
     expect(canTransition('active', 'blocked')).toBe(true);
     expect(canTransition('blocked', 'active')).toBe(true);
     expect(canTransition('done', 'active')).toBe(false);

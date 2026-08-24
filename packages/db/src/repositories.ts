@@ -10,7 +10,9 @@ export const TaskStates = ['proposed', 'active', 'blocked', 'done', 'dropped'] a
 export type TaskState = (typeof TaskStates)[number];
 
 const ALLOWED_TRANSITIONS: Record<TaskState, TaskState[]> = {
-  proposed: ['active', 'dropped'],
+  // proposed->done/blocked allowed (nexus lesson: agents finish work without
+  // ceremony; boards that force activate-first just collect rejections)
+  proposed: ['active', 'blocked', 'done', 'dropped'],
   active: ['blocked', 'done', 'dropped'],
   blocked: ['active', 'done', 'dropped'],
   done: [],
@@ -191,10 +193,13 @@ export class TaskRepo {
     if (!canTransition(task.state, toState)) {
       throw new Error(`illegal task transition ${task.state} -> ${toState}`);
     }
-    // Ownership rule (architecture §2.3): only the owner (or the platform
-    // itself) moves an owned task; claiming unowned tasks is open.
+    // Ownership rule (architecture §2.3): only the owner (or the platform)
+    // activates a task; but ANY agent may close or block — verification is
+    // a reviewer's job, not just the assignee's (nexus lesson: 6 rejected
+    // closes by the critic).
     const privileged = actor === 'orchestrator' || actor === 'human';
-    if (task.owner && !privileged && task.owner !== actor) {
+    const verificationMove = toState === 'done' || toState === 'blocked';
+    if (task.owner && !privileged && task.owner !== actor && !verificationMove) {
       throw new Error(`illegal task move: ${actor} does not own task ${id} (owned by ${task.owner})`);
     }
     // Human-authored work cannot be dropped by agents (nexus lesson).

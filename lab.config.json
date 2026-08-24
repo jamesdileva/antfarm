@@ -10,7 +10,8 @@
   "backoffBaseMs": 500,
   "backoffMaxMs": 60000,
   "harness": {
-    "timeoutMs": 120000
+    "testCmd": "backend/.venv/Scripts/python -m pytest backend/tests -q",
+    "timeoutMs": 180000
   },
   "personalities": {
     "agent-a": "speed",

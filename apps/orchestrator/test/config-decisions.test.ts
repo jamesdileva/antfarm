@@ -121,11 +121,20 @@ describe('board ownership rules', () => {
     // claim an unowned task — allowed
     expect(() => repos.tasks.move('agent-b', t1.id, 'active', 'agent-b')).not.toThrow();
 
-    // non-owner move — rejected
-    expect(() => repos.tasks.move('agent-b', t2.id, 'blocked')).toThrow(/does not own/);
+    // reviewer (non-owner) may close or block, but not re-activate
+    expect(() => repos.tasks.move('agent-b', t2.id, 'blocked')).not.toThrow();
+    const t2b = repos.tasks.create('human', { title: 'owned again' });
+    repos.tasks.move('agent-a', t2b.id, 'active', 'agent-a');
+    expect(() => repos.tasks.move('agent-b', t2b.id, 'done')).not.toThrow();
+    const t2c = repos.tasks.create('human', { title: 'owned third' });
+    repos.tasks.move('agent-a', t2c.id, 'active', 'agent-a');
+    repos.tasks.move('agent-b', t2c.id, 'blocked');
+    expect(() => repos.tasks.move('agent-b', t2c.id, 'active')).toThrow(/does not own/);
 
     // owner moves own task — allowed
-    expect(() => repos.tasks.move('agent-a', t2.id, 'done')).not.toThrow();
+    const t2d = repos.tasks.create('human', { title: 'owned fourth' });
+    repos.tasks.move('agent-a', t2d.id, 'active', 'agent-a');
+    expect(() => repos.tasks.move('agent-a', t2d.id, 'done')).not.toThrow();
 
     // platform override — allowed even on owned tasks
     const t3 = repos.tasks.create('human', { title: 'stuck' });
