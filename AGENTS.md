@@ -14,6 +14,7 @@ platform, observed live. Agents decide *what* to do; the platform decides
 | `docs/architecture.md` | Components, design decisions D1–D6, schema, areas |
 | `docs/implementation-guide.md` | Stack, repo layout, build order, code sketches |
 | `docs/roadmap.md` | Phases/sprints with exit criteria, risk register |
+| `docs/sprint-12-nexus.md` | Planned: session GC + external project targeting (nexus) |
 | `docs/integration.md` | Sentinel integration playbook (Tier 0 contract) — rules this repo must obey |
 
 ## Standing rules
