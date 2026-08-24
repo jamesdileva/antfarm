@@ -4,7 +4,7 @@ import type { ActionsOutputT } from './actions.js';
 import type { Budgets } from './budgets.js';
 import { buildSituation, hasDecision, type SituationContext } from './situation.js';
 import { applyMemoryUpdate } from './memory.js';
-import { capabilitiesFor, parseProposal, tryBirth } from './nursery.js';
+import { capabilitiesFor, parsePromotion, parseProposal, tryBirth, tryPromotion } from './nursery.js';
 
 export interface OrchestratorDeps {
   repos: Repos;
@@ -212,7 +212,7 @@ function commitActions(deps: OrchestratorDeps, agent: string, sessionId: number,
   }
 }
 
-/** A DECISION mail may be a nursery proposal or an approval — handle both. */
+/** A DECISION mail may be a nursery proposal, promotion, or approval. */
 function maybeProcreate(deps: OrchestratorDeps, filed: import('@antfarm/db').MailRow): void {
   const { repos } = deps;
   const projectRoot = deps.situation?.projectRoot ?? 'project';
@@ -224,13 +224,30 @@ function maybeProcreate(deps: OrchestratorDeps, filed: import('@antfarm/db').Mai
     });
     return;
   }
-  // approval attempt: only meaningful inside an existing proposal thread
-  const result = tryBirth(repos, projectRoot, filed);
-  if (!result.ok && result.reason !== 'no proposal in thread') {
+  if (parsePromotion(filed)) {
+    repos.events.append({
+      kind: 'promotion_proposed',
+      actor: filed.from_agent,
+      payload: { threadId: filed.thread_id, subject: filed.subject },
+    });
+    return;
+  }
+  const birth = tryBirth(repos, projectRoot, filed);
+  if (birth.ok) return;
+  if (birth.reason !== 'no proposal in thread') {
     repos.events.append({
       kind: 'procreation_failed',
       actor: filed.from_agent,
-      payload: { reason: result.reason },
+      payload: { reason: birth.reason },
+    });
+    return;
+  }
+  const promotion = tryPromotion(repos, projectRoot, filed);
+  if (!promotion.ok && promotion.reason !== 'no promotion in thread') {
+    repos.events.append({
+      kind: 'promotion_failed',
+      actor: filed.from_agent,
+      payload: { reason: promotion.reason },
     });
   }
 }

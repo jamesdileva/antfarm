@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { MailRow, Repos } from '@antfarm/db';
 
@@ -147,4 +147,166 @@ export function tryBirth(repos: Repos, projectRoot: string, approval: MailRow): 
   });
 
   return { ok: true, babyId: proposal.id };
+}
+
+export interface Promotion {
+  threadId: string;
+  proposer: string;
+  id: string;
+  stage: number;
+}
+
+const PROMOTE_RE = /^PROMOTE AGENT ([a-z0-9-]+) TO STAGE (\d)$/i;
+
+/** Parse a DECISION mail into a promotion proposal, if it is one. */
+export function parsePromotion(mail: MailRow): Promotion | null {
+  const match = mail.subject.match(PROMOTE_RE);
+  if (mail.type !== 'DECISION' || !match) return null;
+  return {
+    threadId: mail.thread_id,
+    proposer: mail.from_agent,
+    id: match[1]!.toLowerCase(),
+    stage: Number(match[2]),
+  };
+}
+
+const STAGE_NAMES = ['', 'Observer', 'Analyst', 'Assistant', 'Specialist'] as const;
+
+export type PromotionResult =
+  | { ok: true; babyId: string; stage: number }
+  | { ok: false; reason: string };
+
+/**
+ * Attempt a promotion: a DECISION approving a promotion proposed in the
+ * same thread by a DIFFERENT actor. One stage at a time, no skipping.
+ */
+export function tryPromotion(repos: Repos, projectRoot: string, approval: MailRow): PromotionResult {
+  const promotionMail = repos.mail
+    .byThread(approval.thread_id)
+    .filter((m) => m.id !== approval.id && m.type === 'DECISION')
+    .map((m) => ({ mail: m, promo: parsePromotion(m) }))
+    .find((x) => x.promo !== null);
+
+  if (!promotionMail?.promo) return { ok: false, reason: 'no promotion in thread' };
+  const promo = promotionMail.promo;
+
+  if (approval.from_agent === promo.proposer) {
+    repos.events.append({
+      kind: 'promotion_rejected',
+      actor: approval.from_agent,
+      payload: { threadId: promo.threadId, babyId: promo.id, reason: 'self-approval' },
+    });
+    return { ok: false, reason: 'self-approval' };
+  }
+
+  const baby = repos.nursery.byId(promo.id);
+  if (!baby) return { ok: false, reason: `unknown agent '${promo.id}'` };
+  if (promo.stage !== baby.stage + 1) {
+    repos.events.append({
+      kind: 'promotion_rejected',
+      actor: approval.from_agent,
+      payload: { threadId: promo.threadId, babyId: promo.id, requested: promo.stage, current: baby.stage, reason: 'stage-skip' },
+    });
+    return { ok: false, reason: `cannot jump from stage ${baby.stage} to ${promo.stage}` };
+  }
+  if (promo.stage < 1 || promo.stage > 4) {
+    return { ok: false, reason: 'invalid stage' };
+  }
+
+  repos.nursery.setStage(promo.id, promo.stage);
+
+  // keep permissions.json in sync with the registry
+  try {
+    const permPath = join(projectRoot, 'agents', promo.id, 'permissions.json');
+    if (existsSync(permPath)) {
+      writeFileSync(permPath, JSON.stringify(STAGE_CAPABILITIES[promo.stage], null, 2), 'utf8');
+    }
+  } catch {
+    /* registry is source of truth; file mirror best-effort */
+  }
+
+  repos.events.append({
+    kind: 'agent_promoted',
+    actor: 'orchestrator',
+    payload: {
+      id: promo.id,
+      from: baby.stage,
+      to: promo.stage,
+      approvers: [promo.proposer, approval.from_agent],
+      threadId: promo.threadId,
+    },
+  });
+
+  repos.mail.enqueue('orchestrator', {
+    to: promo.id,
+    type: 'STATUS',
+    subject: `stage advancement`,
+    body: `You are now stage ${promo.stage} (${STAGE_NAMES[promo.stage]}). Granted capabilities have been updated mechanically.`,
+    priority: 1,
+    threadId: promo.threadId,
+  });
+
+  return { ok: true, babyId: promo.id, stage: promo.stage };
+}
+
+/** Per-baby performance numbers for promotion proposals (architecture §6.2). */
+export interface BabyStats {
+  cycles: number;
+  reportsFiled: number;
+  permissionDenials: number;
+  observationsLogged: number;
+}
+
+export function babyStats(repos: Repos, projectRoot: string, id: string): BabyStats {
+  const cycles = repos.sessions.list().filter((s) => s.agent === id).length;
+  const reportsFiled = repos.events
+    .byKind('mail_filed')
+    .filter((e) => e.actor === id && (JSON.parse(e.payload) as { type: string }).type === 'STATUS').length;
+  const permissionDenials = repos.events.byKind('permission_denied').filter((e) => e.actor === id).length;
+
+  let observationsLogged = 0;
+  try {
+    const log = readFileSync(join(projectRoot, 'agents', id, 'observations.log'), 'utf8');
+    observationsLogged = log.split('\n').filter((l) => l.trim()).length;
+  } catch {
+    /* no log yet */
+  }
+  return { cycles, reportsFiled, permissionDenials, observationsLogged };
+}
+
+export interface AuditEntry {
+  id: string;
+  ok: boolean;
+  reason?: string;
+}
+
+/**
+ * Idea-neutrality audit: every nursery agent's purpose.md must (a) match
+ * the registry's stored purpose and (b) trace through its birth thread to
+ * a parents' proposal carrying that exact purpose.
+ */
+export function auditNursery(repos: Repos, projectRoot: string): AuditEntry[] {
+  const entries: AuditEntry[] = [];
+  for (const baby of repos.nursery.alive()) {
+    const file = join(projectRoot, 'agents', baby.id, 'purpose.md');
+    if (!existsSync(file)) {
+      entries.push({ id: baby.id, ok: false, reason: 'purpose.md missing' });
+      continue;
+    }
+    const onDisk = readFileSync(file, 'utf8').trim();
+    if (onDisk !== baby.purpose.trim()) {
+      entries.push({ id: baby.id, ok: false, reason: 'purpose.md does not match registry (tampered?)' });
+      continue;
+    }
+    const traced = repos.mail
+      .byThread(baby.proposal_thread)
+      .map((m) => parseProposal(m))
+      .some((p) => p?.purpose.trim() === baby.purpose.trim());
+    entries.push(
+      traced
+        ? { id: baby.id, ok: true }
+        : { id: baby.id, ok: false, reason: 'no parent proposal carries this purpose' }
+    );
+  }
+  return entries;
 }

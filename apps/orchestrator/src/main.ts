@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync } from 'node:fs';
+import { mkdirSync, existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { createRepos, openDb } from '@antfarm/db';
 import { Budgets } from './budgets.js';
@@ -12,6 +12,7 @@ import { recoverOrphans } from './recover.js';
 import { loadConfig, type LabConfig } from './config.js';
 import { harnessSummary, runHarness } from './harness.js';
 import { BabyDriver } from './drivers/baby.js';
+import { auditNursery, babyStats } from './nursery.js';
 
 export const PROJECT_ROOT = 'project';
 
@@ -219,14 +220,51 @@ async function reset(): Promise<void> {
   }
 }
 
+async function nurseryCmd(): Promise<void> {
+  const cfg = loadConfig();
+  const dbPath = join(cfg.projectRoot, 'lab.db');
+  if (!existsSync(dbPath)) {
+    console.error(`no lab database at ${dbPath}`);
+    process.exit(1);
+  }
+  const db = openDb(dbPath);
+  const repos = createRepos(db);
+  const babies = repos.nursery.alive();
+
+  if (!babies.length) {
+    console.log('nursery: no living nursery agents');
+    db.close();
+    return;
+  }
+
+  for (const baby of babies) {
+    const stats = babyStats(repos, cfg.projectRoot, baby.id);
+    const creators = JSON.parse(baby.created_by).join(', ');
+    console.log(`${baby.id} "${baby.name}" — stage ${baby.stage} (${baby.runtime})`);
+    console.log(`  parents: ${creators}`);
+    console.log(`  purpose: ${baby.purpose}`);
+    console.log(
+      `  stats: cycles=${stats.cycles} reports=${stats.reportsFiled} ` +
+        `observations=${stats.observationsLogged} permission_denials=${stats.permissionDenials}`
+    );
+  }
+
+  const audit = auditNursery(repos, cfg.projectRoot);
+  const failures = audit.filter((a) => !a.ok);
+  console.log(`idea-neutrality audit: ${audit.length - failures.length}/${audit.length} traced`);
+  for (const fail of failures) console.log(`  FAIL ${fail.id}: ${fail.reason}`);
+  db.close();
+}
+
 async function main(): Promise<void> {
   const cmd = process.argv[2];
   // `run` is also the implicit command when only flags are passed
   if (cmd === 'init') await init();
   else if (cmd === 'reset') await reset();
+  else if (cmd === 'nursery') await nurseryCmd();
   else if (cmd === undefined || cmd === 'run' || cmd.startsWith('--')) await run();
   else {
-    console.error(`unknown command: ${cmd} (try: init | reset | run)`);
+    console.error(`unknown command: ${cmd} (try: init | reset | nursery | run)`);
     process.exit(1);
   }
 }

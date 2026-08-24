@@ -335,6 +335,29 @@ Exit criteria:
 - Stage-1 baby physically cannot move tasks or file non-report mail types
   (gateway-tested); its purpose file matches the parents' text byte-for-byte
 
+### Sprint 10 scope (2026-08-23)
+
+Goals:
+
+- **Promotion protocol**: parents propose via DECISION mail
+  `PROMOTE AGENT <id> TO STAGE <n>`; dual distinct approval required;
+  platform enforces one-stage-at-a-time (Observer→Analyst→Assistant→
+  Specialist), updates the registry and `permissions.json`, audits with
+  `agent_promoted` events
+- **Performance stats** (`babyStats`): per-baby cycle count, reports filed,
+  permission denials, observation volume — surfaced in a `nursery`
+  subcommand so parents' promotion proposals can cite real numbers
+- **Idea-neutrality audit tooling** (`npm start -- nursery`): every
+  `purpose.md` must trace through the event log back to its parents'
+  proposal mail; tampering or untraceable purposes FAIL loudly
+
+Exit criteria:
+
+- Promotion refuses skips/self-approval/duplicate approvals; valid path
+  updates stage + capabilities mechanically
+- Stats reflect seeded activity; `nursery` output shows registry + audit
+- Audit passes on a healthy lab and FAILS when purpose.md is tampered with
+
 **Exit criteria:** parents autonomously identify a recurring problem and
 spawn an agent for it (or demonstrably choose not to); baby operates within
 its permission envelope; attempted permission violation is mechanically
