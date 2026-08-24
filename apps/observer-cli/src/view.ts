@@ -7,6 +7,26 @@ export interface AgentView {
   cycles: number;
 }
 
+export interface UsageRow {
+  agent: string;
+  cycles: number;
+  tokens: number;
+  cost: number;
+  models: string[];
+}
+
+export interface SessionRowView {
+  id: number;
+  agent: string;
+  status: string;
+  cycle: number;
+  tokensIn: number;
+  tokensOut: number;
+  cost: number;
+  model: string;
+  summary: string;
+}
+
 export interface ObserverView {
   agents: AgentView[];
   board: Array<{ id: number; state: string; title: string; owner: string | null }>;
@@ -15,6 +35,8 @@ export interface ObserverView {
   checks: { build: string; test: string };
   recentEvents: Array<{ id: number; kind: string; actor: string }>;
   decisions: number;
+  usage: UsageRow[];
+  recentSessions: SessionRowView[];
 }
 
 /** Pure view builder — SQLite in, renderable data out. */
@@ -54,6 +76,17 @@ export function buildView(dbPath: string): ObserverView {
       return `${p.ok ? 'PASS' : 'FAIL'} (${(p.durationMs / 1000).toFixed(1)}s)`;
     };
 
+    const sessions = repos.sessions.list();
+    const usageMap = new Map<string, UsageRow>();
+    for (const s of sessions) {
+      const agg = usageMap.get(s.agent) ?? { agent: s.agent, cycles: 0, tokens: 0, cost: 0, models: [] as string[] };
+      agg.tokens += s.tokens_in + s.tokens_out;
+      agg.cost += s.cost;
+      if (s.status === 'done') agg.cycles++;
+      if (s.model && !agg.models.includes(s.model)) agg.models.push(s.model);
+      usageMap.set(s.agent, agg);
+    }
+
     return {
       agents,
       board: tasks.map((t) => ({ id: t.id, state: t.state, title: t.title, owner: t.owner })),
@@ -66,6 +99,12 @@ export function buildView(dbPath: string): ObserverView {
         .reverse()
         .map((e) => ({ id: e.id, kind: e.kind, actor: e.actor })),
       decisions: repos.events.byKind('decision_logged').length,
+      usage: [...usageMap.values()],
+      recentSessions: sessions.slice(-10).reverse().map((s) => ({
+        id: s.id, agent: s.agent, status: s.status, cycle: s.cycle,
+        tokensIn: s.tokens_in, tokensOut: s.tokens_out, cost: s.cost,
+        model: s.model, summary: s.summary ?? '',
+      })),
     };
   } finally {
     db.close();

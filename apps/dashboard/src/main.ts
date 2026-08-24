@@ -137,6 +137,12 @@ function page(): string {
 <section><h2>Checks &amp; decisions</h2><table id="checks"></table></section>
 <section><h2>Recent events</h2><table id="events"></table></section>
 <section>
+<h2>Usage</h2>
+<table id="usage"></table>
+<div class="sub" style="margin-top:6px">recent sessions</div>
+<table id="sessions"></table>
+</section>
+<section>
 <h2>Settings</h2>
 <div class="sub">saved to lab.config.json — applies on the next orchestrator start</div>
 <table>
@@ -172,6 +178,15 @@ async function refresh() {
       '<tr><th>decisions</th><td>' + v.decisions + ' logged</td></tr>';
     document.getElementById('events').innerHTML = v.recentEvents.map(e =>
       '<tr><td>[' + esc(e.kind) + ']</td><td>' + esc(e.actor) + '</td></tr>').join('');
+    document.getElementById('usage').innerHTML = v.usage.map(u =>
+      '<tr><th>' + esc(u.agent) + '</th><td>' + u.cycles + ' cycles</td><td>' +
+      u.tokens.toLocaleString() + ' tokens</td><td>$' + u.cost.toFixed(4) + '</td><td class="muted">' +
+      esc(u.models.join(', ') || 'n/a') + '</td></tr>').join('') || '<tr><td class="muted">(no usage yet)</td></tr>';
+    document.getElementById('sessions').innerHTML = v.recentSessions.map(s =>
+      '<tr><td>#' + s.id + '</td><td>' + esc(s.agent) + '</td><td class="' + cls(s.status) + '">' + esc(s.status) +
+      '</td><td>c' + s.cycle + '</td><td>' + (s.tokensIn + s.tokensOut).toLocaleString() + ' tok</td><td>$' +
+      s.cost.toFixed(4) + '</td><td class="muted">' + esc(s.model || '') + '</td></tr>').join('')
+      || '<tr><td class="muted">(none)</td></tr>';
   } catch (err) { /* transient — poll again */ }
 }
 setInterval(refresh, 5000);
