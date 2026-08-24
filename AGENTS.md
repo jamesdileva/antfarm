@@ -73,6 +73,7 @@ the subject names the phase goal.
 | 2026-08-23 | S6 | Build/test harness (events + situation summaries), Mode 2 selection gate (no activation pre-decision), unattended-run report polish; live overnight validation pending first real session | 51/51 pass · build green · dry-run regression green | 9d7b6b1 |
 | 2026-08-23 | S7 | lab reset (fixes live-run state contamination), failure-visible run summaries, observer CLI (view builder + ANSI whiteboard), personality overlays as config; first live run happened but was invalidated by stale DB — rerun needed | 56/56 pass · build green · dry-run green post-reset | 97a9cf3 |
 | 2026-08-23 | S7.1–8 | Live-run fixes: managed opencode server w/ ephemeral port + health probe, cold-start kickoff mail; clean Mode 2 validation (3 cycles, 1 DECISION, notes app chosen unprompted); web dashboard + Sentinel preflight; Phase 4 complete | 60/60 pass · build green · harness PASS on live workspace | 37bd9ca |
+| 2026-08-23 | S9 | Nursery: procreation protocol (PROPOSE AGENT → distinct approval → birth), nursery registry + agent dirs (identity/purpose/permissions), rules-engine BabyDriver in the scheduler loop, stage-1 permission gateway; live run continues separately | 66/66 pass · build green · dry-run green (isolated lab-dryrun.db) | 45053b7 |
 
 <!--
 Add one row per sprint at completion:
