@@ -5,6 +5,8 @@ export interface LabConfig {
   projectRoot: string;
   /** directed = human-authored goal; constrained = agents choose (Mode 2) */
   mode: 'directed' | 'constrained';
+  /** OpenCode model override, e.g. "anthropic/claude-sonnet-4" */
+  model?: string;
   budgets: { maxTokensPerCycle: number; maxCyclesPerHour: number };
   cycleTimeoutMs: number;
   escalationStaleAfterMs: number;
@@ -36,6 +38,11 @@ const DEFAULTS: LabConfig = {
 /** Shallow-merge a lab.config.json over the defaults; absent file is fine. */
 export function loadConfig(projectDir = '.'): LabConfig {
   const path = join(projectDir, 'lab.config.json');
+  return loadConfigFrom(path);
+}
+
+/** Load from an explicit file path (dashboard settings use this). */
+export function loadConfigFrom(path: string): LabConfig {
   if (!existsSync(path)) return structuredClone(DEFAULTS);
   const raw: unknown = JSON.parse(readFileSync(path, 'utf8'));
   return mergeConfig(DEFAULTS, raw);

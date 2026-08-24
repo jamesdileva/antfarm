@@ -1,1 +1,5 @@
-{ "mode": "constrained", "personalities": { "agent-a": "speed", "agent-b": "skeptic" } }
+{
+  "mode": "constrained",
+  "personalities": { "agent-a": "speed", "agent-b": "skeptic" },
+  "model": "opencode/x-preview-f-free"
+}

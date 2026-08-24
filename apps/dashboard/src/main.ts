@@ -1,8 +1,10 @@
 import { createServer, type IncomingMessage, type ServerResponse, type Server } from 'node:http';
 import { existsSync } from 'node:fs';
+import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { openDb } from '@antfarm/db';
 import { buildView, type ObserverView } from '@antfarm/observer-cli';
+import { loadConfigFrom, mergeConfig, type LabConfig } from '@antfarm/orchestrator/config.js';
 
 export function labDbPath(): string {
   if (existsSync('lab.db')) return 'lab.db';
@@ -13,9 +15,34 @@ const esc = (s: unknown): string =>
   String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 /** Route handler — factored out for tests. */
-export function handle(dbPath: string): (req: IncomingMessage, res: ServerResponse) => void {
+export function handle(dbPath: string, configPath = 'lab.config.json'): (req: IncomingMessage, res: ServerResponse) => void {
   return (req, res) => {
     const url = (req.url ?? '/').split('?')[0]!;
+    if (url === '/api/settings') {
+      if (req.method === 'POST') {
+        let raw = '';
+        req.on('data', (chunk: Buffer) => {
+          raw += chunk.toString();
+        });
+        req.on('end', () => {
+          try {
+            const patch = JSON.parse(raw || '{}') as Record<string, unknown>;
+            // merge over the CURRENT file so unrelated keys survive
+            const merged = mergeConfig(loadConfigFrom(configPath), patch);
+            writeFileSync(configPath, JSON.stringify(merged, null, 2), 'utf8');
+            res.writeHead(200, { 'content-type': 'application/json' });
+            res.end(JSON.stringify({ ok: true, config: merged }));
+          } catch (err) {
+            res.writeHead(400, { 'content-type': 'application/json' });
+            res.end(JSON.stringify({ ok: false, error: String((err as Error).message) }));
+          }
+        });
+        return;
+      }
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify(loadConfigFrom(configPath)));
+      return;
+    }
     if (url === '/api/view') {
       // better-sqlite3 would happily create an empty db — refuse instead
       if (!existsSync(dbPath)) {
@@ -109,6 +136,19 @@ function page(): string {
 <section><h2>Task board</h2><table id="board"></table></section>
 <section><h2>Checks &amp; decisions</h2><table id="checks"></table></section>
 <section><h2>Recent events</h2><table id="events"></table></section>
+<section>
+<h2>Settings</h2>
+<div class="sub">saved to lab.config.json — applies on the next orchestrator start</div>
+<table>
+<tr><th>model</th><td><input id="s-model" placeholder="provider/model (blank = opencode default)" style="width:340px"></td></tr>
+<tr><th>maxTokensPerCycle</th><td><input id="s-tokens" type="number" min="1000"></td></tr>
+<tr><th>maxCyclesPerHour</th><td><input id="s-cycles" type="number" min="1"></td></tr>
+<tr><th>idleTickMs</th><td><input id="s-idle" type="number" min="5000"></td></tr>
+<tr><th>exhaustionCooldownMs</th><td><input id="s-cool" type="number" min="0"></td></tr>
+</table>
+<button id="save">Save settings</button>
+<span id="save-msg"></span>
+</section>
 <script>
 const cls = (s) => ({done:'done', failed:'failed', timed_out:'timed_out', never:'never',
                      active:'active', blocked:'blocked'}[String(s)] ?? '');
@@ -139,6 +179,30 @@ const es = new EventSource('/api/stream');
 es.onmessage = refresh; // push-driven refresh on new events
 refresh();
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+
+async function loadSettings() {
+  const cfg = await (await fetch('/api/settings')).json();
+  document.getElementById('s-model').value = cfg.model ?? '';
+  document.getElementById('s-tokens').value = cfg.budgets?.maxTokensPerCycle ?? '';
+  document.getElementById('s-cycles').value = cfg.budgets?.maxCyclesPerHour ?? '';
+  document.getElementById('s-idle').value = cfg.idleTickMs ?? '';
+  document.getElementById('s-cool').value = cfg.exhaustionCooldownMs ?? '';
+}
+document.getElementById('save').onclick = async () => {
+  const num = (id) => { const v = Number(document.getElementById(id).value); return Number.isFinite(v) && v > 0 ? v : undefined; };
+  const modelVal = document.getElementById('s-model').value.trim();
+  const patch = {
+    ...(modelVal ? { model: modelVal } : {}),
+    budgets: { maxTokensPerCycle: num('s-tokens'), maxCyclesPerHour: num('s-cycles') },
+    idleTickMs: num('s-idle'),
+    exhaustionCooldownMs: num('s-cool'),
+  };
+  const res = await fetch('/api/settings', { method: 'POST', headers: {'content-type':'application/json'}, body: JSON.stringify(patch) });
+  const out = await res.json();
+  document.getElementById('save-msg').textContent = out.ok ? 'saved ✓ (next start)' : 'error: ' + out.error;
+  setTimeout(() => { document.getElementById('save-msg').textContent = ''; }, 4000);
+};
+loadSettings();
 </script>
 </body>
 </html>`;

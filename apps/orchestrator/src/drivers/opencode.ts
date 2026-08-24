@@ -81,12 +81,15 @@ export async function createManagedClient(opts?: {
   hostname?: string;
   port?: number;
   timeoutMs?: number;
+  /** OpenCode model override, e.g. "anthropic/claude-sonnet-4" */
+  model?: string;
 }): Promise<{ client: OpencodeSessionClient; serverUrl: string; close: () => void }> {
   const port = opts?.port ?? (await freePort());
   const opencode = await createOpencode({
     hostname: opts?.hostname ?? '127.0.0.1',
     port,
     timeout: opts?.timeoutMs ?? 15_000,
+    ...(opts?.model ? { config: { model: opts.model } } : {}),
   });
   const client = opencode.client as unknown as OpencodeSessionClient;
   return { client, serverUrl: opencode.server.url, close: () => opencode.server.close() };
