@@ -1,7 +1,12 @@
 import { openDb, createRepos } from '@antfarm/db';
 import { simpleGit } from 'simple-git';
+import { existsSync } from 'node:fs';
+import { loadConfigFrom } from '../apps/orchestrator/src/config.js';
+import { join } from 'node:path';
 
 const db = openDb('project/lab.db');
+const cfg = loadConfigFrom('lab.config.json');
+const wsRoot = cfg.workspacePath ?? join('project', 'workspace');
 const r = createRepos(db);
 
 console.log('=== tasks ===');
@@ -28,7 +33,8 @@ for (const k of ['mail_escalated', 'thread_contested', 'task_stuck', 'task_move_
 
 console.log('\n=== workspace git log ===');
 try {
-  const git = simpleGit({ baseDir: 'project/workspace' });
+  if (!existsSync(wsRoot)) throw new Error(`workspace ${wsRoot} does not exist`);
+  const git = simpleGit({ baseDir: wsRoot });
   const log = await git.log({ maxCount: 12 });
   for (const c of log.all) console.log(c.date?.slice(0, 16), c.authorName?.padEnd(9), c.message.slice(0, 60));
   const status = await git.status();

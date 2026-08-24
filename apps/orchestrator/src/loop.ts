@@ -41,7 +41,11 @@ export async function runLoop(deps: OrchestratorDeps, opts: LoopOptions = {}): P
   const { repos, drivers, agents } = deps;
   const maxRounds = opts.maxRounds ?? 100;
 
-  const cycleCounters = new Map<string, number>(agents.map((a) => [a, 0]));
+  // cycle numbering survives restarts — derive from recorded sessions
+  const cycleCounters = new Map<string, number>();
+  for (const agent of agents) {
+    cycleCounters.set(agent, repos.sessions.list().filter((s) => s.agent === agent).length);
+  }
   const lastCycleAt = new Map<string, number>();
   const backoff = new Backoff(500, 60_000);
   /** consecutive unproductive cycles — caps idle-tick burning (S11.1) */

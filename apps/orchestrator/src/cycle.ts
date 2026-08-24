@@ -183,6 +183,25 @@ function commitActions(deps: OrchestratorDeps, agent: string, sessionId: number,
       actor: agent,
       payload: { messageId: filed.id, to: m.to, type: m.type, subject: m.subject },
     });
+    // TASK mails become real board rows — otherwise the board can never grow
+    // beyond human-seeded tasks (overnight-nexus finding).
+    if (m.type === 'TASK') {
+      const existing = repos.tasks
+        .list()
+        .find((t) => t.state !== 'done' && t.state !== 'dropped' && t.title === m.subject);
+      if (!existing) {
+        const task = repos.tasks.create(agent, {
+          title: m.subject,
+          description: m.body,
+          owner: m.to === 'agent-a' || m.to === 'agent-b' ? m.to : null,
+        });
+        repos.events.append({
+          kind: 'task_created',
+          actor: agent,
+          payload: { taskId: task.id, from: agent, assignedTo: m.to, messageId: filed.id },
+        });
+      }
+    }
     // DECISIONS.md protocol: decisions enter the shared event log
     if (m.type === 'DECISION') {
       repos.events.append({

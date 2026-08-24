@@ -171,3 +171,63 @@ describe('config: workspacePath + sessionGc merge', () => {
     return mkdtempSync(join(tmpdir(), 'antfarm-s12cfg-'));
   }
 });
+
+describe('TASK mails create board rows (S12.1)', () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'antfarm-s12task-'));
+  });
+
+  afterEach(() => {
+    try {
+      rmSync(dir, { recursive: true, force: true });
+    } catch {
+      /* best effort */
+    }
+  });
+
+  it('files TASK mail → creates proposed task assigned to recipient; dedupes by title', async () => {
+    const db = openDb(join(dir, 'lab.db'));
+    const repos = createRepos(db);
+
+    let call = 0;
+    const deps: OrchestratorDeps = {
+      repos,
+      budgets: new Budgets({ maxTokensPerCycle: 5000, maxCyclesPerHour: 50 }),
+      drivers: {
+        'agent-a': {
+          pending: () => false,
+          run: async () => {
+            call++;
+            return {
+              mails: [
+                { to: 'agent-b', type: 'TASK', subject: 'Fix CORS null-origin', body: 'acceptance: null allowed safely' },
+                ...(call > 1
+                  ? [{ to: 'agent-b', type: 'TASK' as const, subject: 'Fix CORS null-origin', body: 'duplicate' }]
+                  : []),
+              ],
+              taskMoves: [],
+              summary: 'delegating',
+            };
+          },
+        },
+      },
+      agents: ['agent-a'],
+      situation: { projectRoot: join(dir, 'project') },
+    };
+
+    await runCycle(deps, 'agent-a', 1);
+    expect(repos.tasks.list()).toHaveLength(1);
+    const t = repos.tasks.list()[0]!;
+    expect(t.title).toBe('Fix CORS null-origin');
+    expect(t.owner).toBe('agent-b');
+
+    await runCycle(deps, 'agent-a', 2);
+    expect(repos.tasks.list()).toHaveLength(1); // deduped
+
+    const created = repos.events.byKind('task_created');
+    expect(created).toHaveLength(1);
+    db.close();
+  });
+});

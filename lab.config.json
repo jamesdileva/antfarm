@@ -1,5 +1,24 @@
 {
+  "projectRoot": "project",
   "mode": "constrained",
-  "personalities": { "agent-a": "speed", "agent-b": "skeptic" },
-  "model": "opencode/x-preview-f-free"
+  "budgets": {
+    "maxTokensPerCycle": 20000,
+    "maxCyclesPerHour": 30
+  },
+  "cycleTimeoutMs": 600000,
+  "escalationStaleAfterMs": 3600000,
+  "backoffBaseMs": 500,
+  "backoffMaxMs": 60000,
+  "harness": {
+    "timeoutMs": 120000
+  },
+  "personalities": {
+    "agent-a": "speed",
+    "agent-b": "skeptic"
+  },
+  "idleTickMs": 60000,
+  "exhaustionCooldownMs": 600000,
+  "sessionGc": true,
+  "model": "opencode/x-preview-f-free",
+  "workspacePath": "C:\\Users\\j\\Projects\\nexus"
 }
