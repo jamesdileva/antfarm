@@ -96,6 +96,9 @@ describe('task repo state machine', () => {
 
     expect(() => repos.tasks.move('agent-a', task.id, 'done')).not.toThrow();
     expect(() => repos.tasks.move('agent-b', task.id, 'active')).toThrow(/illegal/);
+
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
   });
 
   it('protects human-created tasks from agent drops', () => {
@@ -114,10 +117,6 @@ describe('task repo state machine', () => {
 
     // and the platform can always clean up
     expect(() => repos.tasks.move('orchestrator', humanTask.id, 'dropped')).not.toThrow();
-
-    db.close();
-    rmSync(dir, { recursive: true, force: true });
-  });
 
     db.close();
     rmSync(dir, { recursive: true, force: true });
