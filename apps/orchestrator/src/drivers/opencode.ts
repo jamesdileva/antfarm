@@ -243,27 +243,56 @@ export class OpenCodeDriver implements AgentDriver {
       // re-prompt it to continue rather than throwing the work away.
       if (!/fetch failed|network|econn|socket|abort/i.test(String(err))) throw err;
       this.retries.set(ctx.agent, Date.now());
-      result = await this.client.session.prompt({
-        path: { id: sessionId },
-        ...(directory ? { query: directory } : {}),
-        body: {
-          parts: [{ type: 'text', text: 'Your previous response was interrupted. Continue where you left off and respond with your final JSON actions.' }],
-          system: systemText,
-        },
-      });
+      result = await this.resume(sessionId, directory, systemText);
     }
 
     const info = result.data.info;
-    this.usageSamples.set(ctx.agent, extractUsage(info));
-    if (info.error) {
-      throw new Error(`assistant error: ${info.error.name ?? 'unknown'}: ${info.error.message ?? ''}`);
+
+    // Provider-side transient errors (heavy load) also arrive as in-band
+    // assistant errors — same-session resume applies to those too.
+    if (
+      info.error &&
+      /APIError|Overloaded|rate.?limit|internal/i.test(
+        `${info.error.name ?? ''} ${info.error.message ?? ''}`
+      )
+    ) {
+      this.retries.set(ctx.agent, Date.now());
+      result = await this.resume(sessionId, directory, systemText);
     }
 
-    const text = result.data.parts
+    const info2 = result.data.info;
+    this.usageSamples.set(ctx.agent, extractUsage(info2));
+    if (info2.error) {
+      throw new Error(`assistant error: ${info2.error.name ?? 'unknown'}: ${info2.error.message ?? ''}`);
+    }
+
+    const text = (result.data.parts ?? [])
       .filter((p) => p.type === 'text')
       .map((p) => p.text ?? '')
       .join('\n');
     return ActionsOutput.parse(extractJson(text));
+  }
+
+  private async resume(
+    sessionId: string,
+    directory: { directory: string } | undefined,
+    systemText: string
+  ): Promise<{
+    data: { info: AssistantInfo; parts: Array<{ type: string; text?: string }> };
+  }> {
+    return this.client.session.prompt({
+      path: { id: sessionId },
+      ...(directory ? { query: directory } : {}),
+      body: {
+        parts: [
+          {
+            type: 'text',
+            text: 'Your previous response was interrupted. Continue where you left off and respond with your final JSON actions.',
+          },
+        ],
+        system: systemText,
+      },
+    });
   }
 }
 

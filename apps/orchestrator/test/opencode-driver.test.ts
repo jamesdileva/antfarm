@@ -123,6 +123,51 @@ describe('OpenCodeDriver', () => {
     expect(() => extractJson('{"broken": ')).toThrow(/no JSON object|not valid JSON/);
   });
 
+  it('resumes the same session once on transient APIError responses', async () => {
+    const calls = { prompts: 0, created: [] as string[] };
+    const client: OpencodeSessionClient = {
+      session: {
+        create: async () => {
+          calls.created.push('x');
+          return { data: { id: 'sess-api' } };
+        },
+        prompt: async () => {
+          calls.prompts++;
+          if (calls.prompts === 1) {
+            return { data: { info: { error: { name: 'APIError', message: '' } }, parts: [] } };
+          }
+          return {
+            data: {
+              info: { tokens: { input: 5, output: 5 }, cost: 0.01 },
+              parts: [{ type: 'text', text: '{"mails":[],"summary":"recovered"}' }],
+            },
+          };
+        },
+      },
+    };
+    const driver = new OpenCodeDriver({ client, driveSheet: BUILDER });
+    const actions = await driver.run({ agent: 'agent-a', cycle: 1, situation: 's' });
+    expect(calls.prompts).toBe(2);
+    expect(driver.lastRetryAt?.('agent-a')).toBeDefined();
+    expect(actions.summary).toBe('recovered');
+  });
+
+  it('does NOT retry auth errors — those need human fixes', async () => {
+    let prompts = 0;
+    const client: OpencodeSessionClient = {
+      session: {
+        create: async () => ({ data: { id: 'sess-auth' } }),
+        prompt: async () => {
+          prompts++;
+          return { data: { info: { error: { name: 'ProviderAuthError', message: 'no key' } }, parts: [] } };
+        },
+      },
+    };
+    const driver = new OpenCodeDriver({ client, driveSheet: CRITIC });
+    await expect(driver.run({ agent: 'agent-b', cycle: 1, situation: 's' })).rejects.toThrow(/assistant error/i);
+    expect(prompts).toBe(1);
+  });
+
   it('extracts usage defensively across shapes', () => {
     expect(extractUsage({ tokens: { input: 10, output: 5 }, cost: 0.02 }))
       .toEqual({ tokensIn: 10, tokensOut: 5, cost: 0.02, model: '' });
