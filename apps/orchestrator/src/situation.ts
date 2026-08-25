@@ -41,6 +41,19 @@ export function renderDecisionsMarkdown(repos: Repos): string {
   ].join('\n');
 }
 
+/** Standing human directives — durable provenance for human mail/task authorizations. */
+function humanDirectives(repos: Repos): string[] {
+  const all = repos.events.byKind('human_directive');
+  if (!all.length) return ['  (none)'];
+  return all.slice(-5).map((e) => {
+    const p = JSON.parse(e.payload) as { channel: string; id: number; to?: string; type?: string; subject?: string; title?: string; owner?: string | null };
+    const what = p.channel === 'mail'
+      ? `${p.type} mail #${p.id} to ${p.to}: ${p.subject}`
+      : `task #${p.id} (owner ${p.owner ?? 'anyone'}): ${p.title}`;
+    return `  [${p.channel}] ${what}`;
+  });
+}
+
 /** Human-readable situation report injected into each cycle prompt. */
 export function buildSituation(
   repos: Repos,
@@ -91,6 +104,9 @@ export function buildSituation(
     '',
     'New decisions since your last review:',
     ...(decisions.lines.length ? decisions.lines : ['  (none)']),
+    '',
+    'Standing human directives (authorizations from the human — cite these IDs as provenance):',
+    ...humanDirectives(repos),
     '',
     'Before answering, consider updating your memoryUpdate (compact working',
     'memory: current goal, open threads, key learnings — ≤20 lines).',

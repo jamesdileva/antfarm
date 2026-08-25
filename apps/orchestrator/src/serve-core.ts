@@ -176,6 +176,14 @@ export function humanMail(input: { to?: string; type?: string; subject?: string;
       actor: 'human',
       payload: { messageId: filed.id, to, type, subject },
     });
+    // durable provenance: delivered mail vanishes from future situation reports,
+    // which burned a human authorization (nexus mail #381 -> 'UNDETERMINED' revert).
+    // Standing directives stay visible in every cycle until acted on.
+    repos.events.append({
+      kind: 'human_directive',
+      actor: 'human',
+      payload: { channel: 'mail', id: filed.id, to, type, subject },
+    });
     return { ok: true, id: filed.id };
   } finally {
     close();
@@ -193,6 +201,11 @@ export function humanTask(input: { title?: string; owner?: string }): HumanResul
       kind: 'task_created',
       actor: 'human',
       payload: { taskId: task.id, from: 'human', assignedTo: owner },
+    });
+    repos.events.append({
+      kind: 'human_directive',
+      actor: 'human',
+      payload: { channel: 'task', id: task.id, title, owner },
     });
     return { ok: true, id: task.id };
   } finally {

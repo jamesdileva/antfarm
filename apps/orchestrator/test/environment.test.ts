@@ -112,6 +112,21 @@ describe('mail reaches the situation report (S2 regression guard)', () => {
     db.close();
     cleanup(dir);
   });
+
+  it('human directives stay visible in situation reports after delivery', async () => {
+    const { db, repos, dir } = setup();
+    const { buildSituation } = await import('../src/situation.js');
+    repos.events.append({
+      kind: 'human_directive',
+      actor: 'human',
+      payload: { channel: 'mail', id: 7, to: 'agent-a', type: 'TASK', subject: 'standing authorization' },
+    });
+    const situation = buildSituation(repos, 'agent-a', { projectRoot: 'project' }, []);
+    expect(situation).toContain('Standing human directives');
+    expect(situation).toContain('TASK mail #7 to agent-a: standing authorization');
+    db.close();
+    cleanup(dir);
+  });
 });
 
 describe('inbox survives failed cycles', () => {

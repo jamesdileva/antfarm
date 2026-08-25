@@ -198,6 +198,10 @@ describe('serve control API', () => {
     expect(task.owner).toBe('agent-b');
     expect(repos.events.byKind('mail_filed').some((e) => e.actor === 'human')).toBe(true);
     expect(repos.events.byKind('task_created').some((e) => e.actor === 'human')).toBe(true);
+    // durable provenance: standing directives logged for both channels
+    const directives = repos.events.byKind('human_directive');
+    expect(directives.some((e) => (JSON.parse(e.payload) as { channel: string }).channel === 'mail')).toBe(true);
+    expect(directives.some((e) => (JSON.parse(e.payload) as { channel: string }).channel === 'task')).toBe(true);
     database.close();
   });
 
