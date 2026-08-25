@@ -54,9 +54,13 @@ export async function runCycle(deps: OrchestratorDeps, agent: string, cycle: num
   const driver = deps.drivers[agent];
   if (!driver) throw new Error(`no driver for ${agent}`);
 
-  const mail = repos.mail.queuedFor(agent);
-  repos.mail.markDelivered(mail.map((m) => m.id));
-  const situation = buildSituation(repos, agent, deps.situation ?? { projectRoot: 'project' });
+  // S2 regression guard: the inbox MUST be captured before markDelivered and
+  // passed into buildSituation — buildSituation re-queries queuedFor, which is
+  // empty after marking, so reordering here silently blinded agents to mail
+  // for 20+ sprints (human mails showed 'delivered' but were never seen).
+  const inbox = repos.mail.queuedFor(agent);
+  const situation = buildSituation(repos, agent, deps.situation ?? { projectRoot: 'project' }, inbox);
+  repos.mail.markDelivered(inbox.map((m) => m.id));
 
   const session = repos.sessions.start({ agent, cycle, goal: driverGoal(deps, agent) });
   const retryBefore = (driver as { lastRetryAt?: (a: string) => number | undefined }).lastRetryAt?.(agent);

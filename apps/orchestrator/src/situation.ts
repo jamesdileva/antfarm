@@ -1,4 +1,4 @@
-import type { Repos } from '@antfarm/db';
+import type { MailRow, Repos } from '@antfarm/db';
 import { readGoal } from './goal.js';
 import { harnessSummary } from './harness.js';
 
@@ -42,8 +42,14 @@ export function renderDecisionsMarkdown(repos: Repos): string {
 }
 
 /** Human-readable situation report injected into each cycle prompt. */
-export function buildSituation(repos: Repos, agent: string, ctx: SituationContext): string {
-  const mail = repos.mail.queuedFor(agent);
+export function buildSituation(
+  repos: Repos,
+  agent: string,
+  ctx: SituationContext,
+  /** pre-captured inbox — MUST be fetched before markDelivered (S2 regression guard) */
+  inbox?: MailRow[]
+): string {
+  const mail = inbox ?? repos.mail.queuedFor(agent);
   const tasks = repos.tasks.list();
   const board = tasks.length
     ? tasks.map((t) => `  #${t.id} [${t.state}] ${t.title} (owner: ${t.owner ?? 'none'})`).join('\n')

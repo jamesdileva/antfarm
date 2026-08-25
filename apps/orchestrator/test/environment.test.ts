@@ -78,6 +78,42 @@ describe('wall-clock cycle timeout', () => {
   });
 });
 
+describe('mail reaches the situation report (S2 regression guard)', () => {
+  it('injects queued mail into the prompt before marking it delivered', async () => {
+    const { db, repos, dir } = setup();
+    let seenSituation = '';
+    const spyDriver = {
+      pending: () => true,
+      run: async (ctx: { situation: string }) => {
+        seenSituation = ctx.situation;
+        return { mails: [], taskMoves: [], summary: 'ok' };
+      },
+    };
+    const deps: OrchestratorDeps = {
+      repos,
+      budgets: new Budgets({ maxTokensPerCycle: 5000, maxCyclesPerHour: 50 }),
+      drivers: { 'agent-a': spyDriver },
+      agents: ['agent-a'],
+    };
+
+    repos.mail.enqueue('human', {
+      to: 'agent-a',
+      type: 'TASK',
+      subject: 'HUMAN E2E regression probe',
+      body: 'if you can read this the pipeline works',
+      priority: 1,
+    });
+
+    await runCycle(deps, 'agent-a', 1);
+    expect(seenSituation).toContain('HUMAN E2E regression probe');
+    expect(seenSituation).toContain('if you can read this the pipeline works');
+    // and the mail is marked delivered after injection
+    expect(repos.mail.queuedFor('agent-a')).toHaveLength(0);
+    db.close();
+    cleanup(dir);
+  });
+});
+
 describe('malformed-output teaching loop', () => {
   it('files a WARNING back to the sender and keeps going', async () => {
     const { db, repos, dir } = setup();
