@@ -1,4 +1,4 @@
-import { mkdtempSync, existsSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -156,6 +156,49 @@ describe('serve control API', () => {
     expect(existsSync(join(home, 'project', 'shared', 'PROJECT_GOAL.md'))).toBe(false);
     const goalRes = await fetch(url('/api/lab/goal'));
     expect(((await goalRes.json()) as { goal: string | null }).goal).toBeNull();
+  });
+
+  it('human channel: mail lands in inbox + event log, task created with owner', async () => {
+    await boot();
+    mkdirSync(join(home, 'project'), { recursive: true });
+    const { openDb } = await import('@antfarm/db');
+    openDb(join(home, 'project', 'lab.db')).close();
+
+    const mailRes = await fetch(url('/api/human/mail'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ to: 'agent-a', type: 'TASK', subject: 'human GUI ask', body: 'details here' }),
+    });
+    const mailed = (await mailRes.json()) as { ok: boolean; id?: number; error?: string };
+    expect(mailed.ok).toBe(true);
+
+    const taskRes = await fetch(url('/api/human/task'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ title: 'human-created task', owner: 'agent-b' }),
+    });
+    const tasked = (await taskRes.json()) as { ok: boolean; id?: number };
+    expect(tasked.ok).toBe(true);
+
+    // validation errors
+    const bad = await fetch(url('/api/human/mail'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ to: 'agent-c', subject: 'x' }),
+    });
+    expect(((await bad.json()) as { ok: boolean }).ok).toBe(false);
+
+    // DB reality: mail queued for agent-a, task owned by agent-b, events filed
+    const { createRepos } = await import('@antfarm/db');
+    const database = openDb(join(home, 'project', 'lab.db'));
+    const repos = createRepos(database);
+    const inbox = repos.mail.queuedFor('agent-a');
+    expect(inbox.some((m) => m.subject === 'human GUI ask' && m.from_agent === 'human')).toBe(true);
+    const task = repos.tasks.byId(tasked.id!);
+    expect(task.owner).toBe('agent-b');
+    expect(repos.events.byKind('mail_filed').some((e) => e.actor === 'human')).toBe(true);
+    expect(repos.events.byKind('task_created').some((e) => e.actor === 'human')).toBe(true);
+    database.close();
   });
 
   it('init rejects non-git targets', async () => {

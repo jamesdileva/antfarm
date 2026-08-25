@@ -5,6 +5,7 @@ import { buildDeps } from './lab.js';
 import { loadConfigFrom, writeConfig, type LabConfig } from './config.js';
 import { homePaths } from './home.js';
 import { seedGoal, GOAL_FILE } from './goal.js';
+import { openDb, createRepos, type Repos } from '@antfarm/db';
 
 export type ColonyState = 'stopped' | 'starting' | 'running' | 'stopping';
 
@@ -141,4 +142,60 @@ export function currentConfig(): LabConfig {
 
 export function configPath(): string {
   return homePaths().config;
+}
+
+// --- human voice: direct mail + task creation from the GUI ---
+
+const AGENTS = ['agent-a', 'agent-b'];
+const MAIL_TYPES = ['QUESTION', 'IDEA', 'TASK', 'REVIEW', 'WARNING', 'DECISION', 'STATUS', 'HELP'] as const;
+
+function labRepos(): { repos: Repos; close: () => void } {
+  const cfg = loadConfigFrom(homePaths().config);
+  const db = openDb(homePaths(cfg.projectRoot).db());
+  return { repos: createRepos(db), close: () => db.close() };
+}
+
+export interface HumanResult {
+  ok: boolean;
+  id?: number;
+  error?: string;
+}
+
+export function humanMail(input: { to?: string; type?: string; subject?: string; body?: string }): HumanResult {
+  const to = AGENTS.includes(input.to ?? '') ? input.to! : null;
+  if (!to) return { ok: false, error: `to must be one of ${AGENTS.join(', ')}` };
+  const type = (MAIL_TYPES as readonly string[]).includes(input.type ?? '') ? (input.type as (typeof MAIL_TYPES)[number]) : 'STATUS';
+  const subject = (input.subject ?? '').trim();
+  if (!subject) return { ok: false, error: 'subject required' };
+  const body = input.body ?? '';
+  const { repos, close } = labRepos();
+  try {
+    const filed = repos.mail.enqueue('human', { to, type, subject, body, priority: 1 });
+    repos.events.append({
+      kind: 'mail_filed',
+      actor: 'human',
+      payload: { messageId: filed.id, to, type, subject },
+    });
+    return { ok: true, id: filed.id };
+  } finally {
+    close();
+  }
+}
+
+export function humanTask(input: { title?: string; owner?: string }): HumanResult {
+  const title = (input.title ?? '').trim();
+  if (!title) return { ok: false, error: 'title required' };
+  const owner = AGENTS.includes(input.owner ?? '') ? input.owner! : null;
+  const { repos, close } = labRepos();
+  try {
+    const task = repos.tasks.create('human', { title, owner });
+    repos.events.append({
+      kind: 'task_created',
+      actor: 'human',
+      payload: { taskId: task.id, from: 'human', assignedTo: owner },
+    });
+    return { ok: true, id: task.id };
+  } finally {
+    close();
+  }
 }

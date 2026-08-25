@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse, type Server } from 'node:http';
 import { handle as dashboardHandle } from '@antfarm/dashboard';
-import { ColonyManager, initLab, currentConfig, configPath } from './serve-core.js';
+import { ColonyManager, initLab, currentConfig, configPath, humanMail, humanTask } from './serve-core.js';
 import { antfarmHome, homePaths } from './home.js';
 import { readGoal, seedGoal } from './goal.js';
 import { archiveLab, resetLab } from './archive.js';
@@ -23,6 +23,8 @@ export function createServeHandler(manager: ColonyManager): (req: IncomingMessag
     '/api/lab/stop': 'POST',
     '/api/lab/archive': 'POST',
     '/api/lab/reset': 'POST',
+    '/api/human/mail': 'POST',
+    '/api/human/task': 'POST',
   };
 
   return (req, res) => {
@@ -86,6 +88,28 @@ export function createServeHandler(manager: ColonyManager): (req: IncomingMessag
           return;
         }
         const result = resetLab(currentConfig(), body.all !== false);
+        json(result.ok ? 200 : 400, result);
+      });
+      return;
+    }
+    if (url === '/api/human/mail') {
+      readBody(req).then((body) => {
+        const result = humanMail({
+          to: typeof body.to === 'string' ? body.to : undefined,
+          type: typeof body.type === 'string' ? body.type : undefined,
+          subject: typeof body.subject === 'string' ? body.subject : undefined,
+          body: typeof body.body === 'string' ? body.body : '',
+        });
+        json(result.ok ? 200 : 400, result);
+      });
+      return;
+    }
+    if (url === '/api/human/task') {
+      readBody(req).then((body) => {
+        const result = humanTask({
+          title: typeof body.title === 'string' ? body.title : undefined,
+          owner: typeof body.owner === 'string' ? body.owner : '',
+        });
         json(result.ok ? 200 : 400, result);
       });
       return;

@@ -174,6 +174,23 @@ function page(): string {
 <span id="colony-state" data-testid="colony-status"></span>
 <span id="control-msg"></span>
 </section>
+<section data-testid="human-channel">
+<h2>Human channel</h2>
+<div class="sub">speak to the colony directly - mail lands in their next cycle inbox; assigned tasks wake their owner</div>
+<table style="margin-bottom:8px">
+<tr><th>mail to</th><td><select id="hm-to"><option value="agent-a">agent-a</option><option value="agent-b">agent-b</option></select></td>
+<th>type</th><td><select id="hm-type"><option>TASK</option><option>STATUS</option><option>QUESTION</option><option>WARNING</option><option>IDEA</option></select></td></tr>
+<tr><th>subject</th><td colspan="3"><input id="hm-subject" placeholder="one-line ask" style="width:420px"></td></tr>
+</table>
+<textarea id="hm-body" placeholder="details (optional)" style="width:560px;height:56px;display:block"></textarea>
+<button id="hm-send" data-testid="human-mail-send" style="margin:6px 0 12px">Send mail</button>
+<table>
+<tr><th>new task</th><td><input id="ht-title" placeholder="task title" style="width:380px"></td>
+<th>assign to</th><td><select id="ht-owner"><option value="">(unassigned)</option><option value="agent-a">agent-a</option><option value="agent-b">agent-b</option></select></td>
+<td><button id="ht-add" data-testid="human-task-add">Add task</button></td></tr>
+</table>
+<span id="hc-msg"></span>
+</section>
 <section><h2>Agents</h2><table id="agents" data-testid="agents-panel"></table></section>
 <section><h2>Latest mail</h2><table id="mail" data-testid="mail-panel"></table></section>
 <section><h2>Task board</h2><table id="board" data-testid="board-panel"></table></section>
@@ -360,6 +377,42 @@ document.getElementById('set-goal').onclick = async () => {
     pendingMode = undefined;
     refreshGoal();
   }
+};
+// human channel (serve mode)
+const hcMsg = document.getElementById('hc-msg');
+function hcNote(t, color) { hcMsg.textContent = t; hcMsg.style.color = color || '#8b949e'; }
+document.getElementById('hm-send').onclick = async () => {
+  const subject = document.getElementById('hm-subject').value.trim();
+  if (!subject) { hcNote('subject required', '#f85149'); return; }
+  try {
+    const res = await fetch('/api/human/mail', { method: 'POST', headers: {'content-type':'application/json'}, body: JSON.stringify({
+      to: document.getElementById('hm-to').value,
+      type: document.getElementById('hm-type').value,
+      subject,
+      body: document.getElementById('hm-body').value,
+    }) });
+    const out = await res.json();
+    if (out.ok) {
+      hcNote('mail #' + out.id + ' delivered into their next cycle', '#3fb950');
+      document.getElementById('hm-subject').value = '';
+      document.getElementById('hm-body').value = '';
+    } else hcNote('error: ' + out.error, '#f85149');
+  } catch (err) { hcNote('unavailable', '#f85149'); }
+};
+document.getElementById('ht-add').onclick = async () => {
+  const title = document.getElementById('ht-title').value.trim();
+  if (!title) { hcNote('task title required', '#f85149'); return; }
+  try {
+    const res = await fetch('/api/human/task', { method: 'POST', headers: {'content-type':'application/json'}, body: JSON.stringify({
+      title,
+      owner: document.getElementById('ht-owner').value,
+    }) });
+    const out = await res.json();
+    if (out.ok) {
+      hcNote('task #' + out.id + ' on the board', '#3fb950');
+      document.getElementById('ht-title').value = '';
+    } else hcNote('error: ' + out.error, '#f85149');
+  } catch (err) { hcNote('unavailable', '#f85149'); }
 };
 setInterval(async () => {
   try {
