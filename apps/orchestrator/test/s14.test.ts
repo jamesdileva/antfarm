@@ -138,6 +138,26 @@ describe('serve control API', () => {
     expect(existsSync(join(archived.path!, 'project', 'shared', 'PROJECT_GOAL.md'))).toBe(true);
   });
 
+  it('clearGoal removes PROJECT_GOAL.md (autonomous)', async () => {
+    await boot();
+    await fetch(url('/api/lab/init'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ goal: 'temporary mission' }),
+    });
+    expect(existsSync(join(home, 'project', 'shared', 'PROJECT_GOAL.md'))).toBe(true);
+
+    const res = await fetch(url('/api/lab/init'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ clearGoal: true }),
+    });
+    expect((await res.json()).ok).toBe(true);
+    expect(existsSync(join(home, 'project', 'shared', 'PROJECT_GOAL.md'))).toBe(false);
+    const goalRes = await fetch(url('/api/lab/goal'));
+    expect(((await goalRes.json()) as { goal: string | null }).goal).toBeNull();
+  });
+
   it('init rejects non-git targets', async () => {
     await boot();
     const notARepo = mkdtempSync(join(tmpdir(), 'antfarm-nogit-'));

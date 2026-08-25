@@ -56,7 +56,8 @@ export function createServeHandler(manager: ColonyManager): (req: IncomingMessag
         const goal = typeof body.goal === 'string' ? body.goal : undefined;
         const mode = body.mode === 'constrained' || body.mode === 'directed' ? body.mode : undefined;
         const target = typeof body.target === 'string' ? body.target : undefined;
-        const result = initLab({ goal, mode, target });
+        const clearGoal = body.clearGoal === true;
+        const result = initLab({ goal, mode, target, clearGoal });
         json(result.ok ? 200 : 400, result);
       });
       return;

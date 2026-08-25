@@ -163,7 +163,11 @@ function page(): string {
 <button id="archive" data-testid="colony-archive">Archive lab</button>
 <button id="reset" data-testid="colony-reset">Reset lab</button>
 <div id="goal-current" data-testid="goal-current" style="display:none;border:1px solid #30363d;border-radius:6px;padding:8px 12px;margin-bottom:10px;white-space:pre-wrap;color:#c9d1d9;font-size:12px"></div>
-<input id="goal-input" data-testid="goal-input" placeholder="mission / constraints for the colony" style="width:300px">
+<div class="sub">goal presets — pick one to fill the editor (edit freely), then Set goal. Autonomous needs no goal.</div>
+<button id="preset-directed" data-testid="goal-preset-directed">Preset: Directed (docs-driven)</button>
+<button id="preset-constrained" data-testid="goal-preset-constrained">Preset: Constrained (local-only)</button>
+<button id="preset-autonomous" data-testid="goal-preset-autonomous">Clear goal (autonomous)</button>
+<textarea id="goal-input" data-testid="goal-input" placeholder="mission / constraints for the colony (or use a preset)" style="width:560px;height:110px;vertical-align:top"></textarea><br>
 <button id="set-goal" data-testid="goal-set">Set goal</button>
 <span id="colony-state" data-testid="colony-status"></span>
 <span id="control-msg"></span>
@@ -305,12 +309,53 @@ async function refreshGoal() {
   } catch { /* serve mode only */ }
 }
 refreshGoal();
+// goal presets - GUI-side fill-ins only; nothing reaches agents until Set goal.
+// NOTE: this code lives inside a template literal - no backticks, no dollar-brace, no backslash-n escapes.
+const NL = String.fromCharCode(10);
+const PRESET_DIRECTED = [
+  '# Mission',
+  '',
+  'Read and follow the documents in this workspace (README, docs/, roadmap).',
+  'Before each work segment: check the task board, read recent mail, and review your MEMORY.md.',
+  'Complete sprints/tasks one at a time, in order - finish, test, commit, update the board, then move to the next.',
+  'Work together: assign tasks on the board, peer-review work, keep states current.',
+  'If the workspace has no docs yet, write them first (plan the project into sprints), then follow them.',
+].join(NL);
+const PRESET_CONSTRAINED = [
+  '# Constraints',
+  '',
+  'Decide collectively what to build, then build it.',
+  'Local-first software that runs entirely on the machine of the user.',
+  'Avoid external APIs and paid services - offline-capable, no accounts, no runtime network calls beyond package installation.',
+  'Brainstorm and vote via DECISION mail, then plan board tasks and execute one at a time with tests and commits.',
+].join(NL);
+let pendingMode;
+document.getElementById('preset-directed').onclick = () => {
+  document.getElementById('goal-input').value = PRESET_DIRECTED;
+  pendingMode = 'directed';
+  note('directed preset loaded - edit if needed, then Set goal', '#58a6ff');
+};
+document.getElementById('preset-constrained').onclick = () => {
+  document.getElementById('goal-input').value = PRESET_CONSTRAINED;
+  pendingMode = 'constrained';
+  note('constrained preset loaded - edit if needed, then Set goal', '#58a6ff');
+};
+document.getElementById('preset-autonomous').onclick = async () => {
+  if (!confirm('Clear PROJECT_GOAL.md? Agents will run on drives alone (no mission text).')) return;
+  pendingMode = undefined;
+  document.getElementById('goal-input').value = '';
+  const res = await fetch('/api/lab/init', { method: 'POST', headers: {'content-type':'application/json'}, body: JSON.stringify({ clearGoal: true }) });
+  const out = await res.json();
+  if (out.ok) { note('goal cleared - autonomous mode', '#3fb950'); refreshGoal(); }
+  else note('error: ' + out.error, '#f85149');
+};
 document.getElementById('set-goal').onclick = async () => {
   const goal = document.getElementById('goal-input').value.trim();
-  if (!goal) { note('enter a mission first', '#f85149'); return; }
-  if (await control('/api/lab/init', { goal })) {
+  if (!goal) { note('enter a mission first (or pick a preset)', '#f85149'); return; }
+  if (await control('/api/lab/init', { goal, mode: pendingMode })) {
     note('goal saved — applies next cycle', '#3fb950');
     document.getElementById('goal-input').value = '';
+    pendingMode = undefined;
     refreshGoal();
   }
 };

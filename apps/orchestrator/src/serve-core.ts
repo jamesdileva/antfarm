@@ -1,10 +1,10 @@
-import { existsSync } from 'node:fs';
+import { existsSync, rmSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { runLoop, type LoopReport } from './loop.js';
 import { buildDeps } from './lab.js';
 import { loadConfigFrom, writeConfig, type LabConfig } from './config.js';
 import { homePaths } from './home.js';
-import { seedGoal } from './goal.js';
-import { resolve } from 'node:path';
+import { seedGoal, GOAL_FILE } from './goal.js';
 
 export type ColonyState = 'stopped' | 'starting' | 'running' | 'stopping';
 
@@ -105,8 +105,13 @@ export function initLab(input: {
   goal?: string;
   mode?: 'directed' | 'constrained';
   target?: string;
+  clearGoal?: boolean;
 }): { ok: true; message: string } | { ok: false; error: string } {
   const paths = homePaths(loadConfigFrom(homePaths().config).projectRoot);
+  if (input.clearGoal) {
+    rmSync(join(paths.project, 'shared', GOAL_FILE), { force: true });
+    return { ok: true, message: 'goal cleared — autonomous mode' };
+  }
   if (input.target) {
     if (!existsSync(input.target)) return { ok: false, error: `target does not exist: ${input.target}` };
     if (!existsSync(resolve(input.target, '.git'))) {
