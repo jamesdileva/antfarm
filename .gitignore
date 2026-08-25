@@ -5,3 +5,4 @@ dist/
 project/
 release/
 apps/shell/dist/
+session-*.md
