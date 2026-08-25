@@ -100,6 +100,17 @@ export class MailRepo {
     tx(ids);
   }
 
+  /** Undo a delivery whose cycle died before acting on it (APIError/timeout). */
+  reQueue(ids: number[]): void {
+    const stmt = this.db.prepare(
+      `UPDATE messages SET status = 'queued', delivered_at = NULL WHERE id = ? AND status = 'delivered'`
+    );
+    const tx = this.db.transaction((ids: number[]) => {
+      for (const id of ids) stmt.run(id);
+    });
+    tx(ids);
+  }
+
   byThread(threadId: string): MailRow[] {
     return this.db
       .prepare('SELECT * FROM messages WHERE thread_id = ? ORDER BY id')

@@ -73,6 +73,10 @@ export async function runCycle(deps: OrchestratorDeps, agent: string, cycle: num
       () => void driver.abort?.(agent)
     );
   } catch (err) {
+    // the inbox was consumed by a cycle that died before acting on it —
+    // re-queue so human mail survives APIErrors/timeouts (nexus finding:
+    // mail #302 was burned by a provider error and never seen)
+    repos.mail.reQueue(inbox.map((m) => m.id));
     if (err instanceof CycleTimeoutError) {
       repos.sessions.finish(session.id, 'timed_out', {}, err.message);
       repos.events.append({

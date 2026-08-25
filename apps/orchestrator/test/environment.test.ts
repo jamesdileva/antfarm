@@ -114,6 +114,38 @@ describe('mail reaches the situation report (S2 regression guard)', () => {
   });
 });
 
+describe('inbox survives failed cycles', () => {
+  it('re-queues consumed mail when the cycle fails (APIError/timeout)', async () => {
+    const { db, repos, dir } = setup();
+    const boomDriver = {
+      pending: () => true,
+      run: async () => {
+        throw new Error('assistant error: APIError');
+      },
+    };
+    const deps: OrchestratorDeps = {
+      repos,
+      budgets: new Budgets({ maxTokensPerCycle: 5000, maxCyclesPerHour: 50 }),
+      drivers: { 'agent-a': boomDriver },
+      agents: ['agent-a'],
+    };
+
+    repos.mail.enqueue('human', {
+      to: 'agent-a',
+      type: 'TASK',
+      subject: 'must survive a crashed cycle',
+      body: 'still needs a reply',
+      priority: 1,
+    });
+
+    await runCycle(deps, 'agent-a', 1);
+    const inbox = repos.mail.queuedFor('agent-a');
+    expect(inbox.some((m) => m.subject === 'must survive a crashed cycle')).toBe(true);
+    db.close();
+    cleanup(dir);
+  });
+});
+
 describe('malformed-output teaching loop', () => {
   it('files a WARNING back to the sender and keeps going', async () => {
     const { db, repos, dir } = setup();
