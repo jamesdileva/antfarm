@@ -160,6 +160,8 @@ function page(): string {
 <button id="start-dry" data-testid="colony-start-dry">Start dry-run</button>
 <button id="start-live" data-testid="colony-start-live">Start live</button>
 <button id="stop" data-testid="colony-stop">Stop</button>
+<button id="archive" data-testid="colony-archive">Archive lab</button>
+<button id="reset" data-testid="colony-reset">Reset lab</button>
 <div id="goal-current" data-testid="goal-current" style="display:none;border:1px solid #30363d;border-radius:6px;padding:8px 12px;margin-bottom:10px;white-space:pre-wrap;color:#c9d1d9;font-size:12px"></div>
 <input id="goal-input" data-testid="goal-input" placeholder="mission / constraints for the colony" style="width:300px">
 <button id="set-goal" data-testid="goal-set">Set goal</button>
@@ -276,6 +278,19 @@ document.getElementById('start-live').onclick = async () => {
   if (await control('/api/lab/start', { live: true })) note('live colony starting…', '#3fb950');
 };
 document.getElementById('stop').onclick = () => control('/api/lab/stop');
+document.getElementById('archive').onclick = async () => {
+  if (!confirm('Archive the current lab (project + database) into archives/?')) return;
+  const res = await fetch('/api/lab/archive', { method: 'POST', headers: {'content-type':'application/json'}, body: '{}' });
+  const out = await res.json();
+  if (out.ok) note('archived to ' + out.path, '#3fb950');
+  else note('archive failed: ' + out.error, '#f85149');
+};
+document.getElementById('reset').onclick = async () => {
+  if (!confirm('Reset wipes the lab board/mail/memory AND the project workspace. Did you archive first?')) return;
+  if (!confirm('This cannot be undone. Really wipe everything?')) return;
+  if (await control('/api/lab/reset', { all: true })) note('lab reset — set a goal and start fresh', '#3fb950');
+  refreshGoal();
+};
 async function refreshGoal() {
   const el = document.getElementById('goal-current');
   try {

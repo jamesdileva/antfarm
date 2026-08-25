@@ -2,7 +2,8 @@ import { createServer, type IncomingMessage, type ServerResponse, type Server } 
 import { handle as dashboardHandle } from '@antfarm/dashboard';
 import { ColonyManager, initLab, currentConfig, configPath } from './serve-core.js';
 import { antfarmHome, homePaths } from './home.js';
-import { readGoal } from './goal.js';
+import { readGoal, seedGoal } from './goal.js';
+import { archiveLab, resetLab } from './archive.js';
 
 export interface ServeApp {
   server: Server;
@@ -20,6 +21,8 @@ export function createServeHandler(manager: ColonyManager): (req: IncomingMessag
     '/api/lab/init': 'POST',
     '/api/lab/start': 'POST',
     '/api/lab/stop': 'POST',
+    '/api/lab/archive': 'POST',
+    '/api/lab/reset': 'POST',
   };
 
   return (req, res) => {
@@ -66,10 +69,29 @@ export function createServeHandler(manager: ColonyManager): (req: IncomingMessag
       });
       return;
     }
+    if (url === '/api/lab/archive') {
+      if (manager.status().state !== 'stopped') {
+        json(409, { ok: false, error: `colony is ${manager.status().state} — stop it before archiving` });
+        return;
+      }
+      const result = archiveLab(currentConfig());
+      json(result.ok ? 200 : 400, result);
+      return;
+    }
+    if (url === '/api/lab/reset') {
+      readBody(req).then((body) => {
+        if (manager.status().state !== 'stopped') {
+          json(409, { ok: false, error: `colony is ${manager.status().state} — stop it before resetting` });
+          return;
+        }
+        const result = resetLab(currentConfig(), body.all !== false);
+        json(result.ok ? 200 : 400, result);
+      });
+      return;
+    }
     // /api/lab/stop
     void manager.stop().then((result) => json(result.ok ? 200 : 409, result));
-  };
-}
+  };}
 
 function labDb(): string {
   return homePaths(currentConfig().projectRoot).db();

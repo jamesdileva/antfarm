@@ -438,6 +438,24 @@ S15 packaging at `release/win-unpacked/` + §7 preflight + feature tester.
 **Exit criteria:** double-click exe → dashboard; create+start a colony via
 GUI alone; Sentinel preflight green end-to-end.
 
+## Phase 7 — Colony lifecycle polish (S16)
+
+**Goal:** finished projects are never lost to a reset. Archive snapshots a
+lab (project tree + lab.db + config) into `<home>/archives/<timestamp>/`;
+reset then becomes safe to run before starting the next experiment
+(autonomous or constrained).
+
+- `archive` CLI command + shared `archiveLab()` used by serve mode
+- Serve control routes: `POST /api/lab/archive`, `POST /api/lab/reset`
+  (both refuse while the colony is running)
+- Dashboard: Archive + Reset buttons on the colony panel (reset confirms)
+- Shell: single-instance lock (double-launch no longer spawns competing
+  orchestrators)
+
+**Exit criteria:** archive → reset → init new goal → fresh colony runs;
+archived project + db fully intact and inspectable; all via GUI alone.
+
+
 ## Later / backlog
 
 - >2 parent agents and role specialization (schema already supports it;

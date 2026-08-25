@@ -3,6 +3,19 @@ const { spawn } = require('child_process');
 const http = require('http');
 const path = require('path');
 
+// one colony, one shell — a second exe would fight over the serve port
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+}
+
+app.on('second-instance', () => {
+  const win = BrowserWindow.getAllWindows()[0];
+  if (win) {
+    if (win.isMinimized()) win.restore();
+    win.focus();
+  }
+});
+
 // integration.md §3 rule 6: self-spawning-backend pattern — the shell owns
 // the orchestrator process; renderer only ever talks to its HTTP API.
 let orchestrator = null;

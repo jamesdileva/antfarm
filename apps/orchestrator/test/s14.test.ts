@@ -111,6 +111,33 @@ describe('serve control API', () => {
     expect(after.mode).toBe('constrained');
   });
 
+  it('archive snapshots then reset wipes via control API', async () => {
+    await boot();
+    await fetch(url('/api/lab/init'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ goal: 'to be archived', mode: 'directed' }),
+    });
+    // init does not create the db — first start does; seed one directly
+    const { openDb } = await import('@antfarm/db');
+    openDb(join(home, 'project', 'lab.db')).close();
+
+    const archRes = await fetch(url('/api/lab/archive'), { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+    const archived = (await archRes.json()) as { ok: boolean; path?: string; error?: string };
+    expect(archived.ok).toBe(true);
+    expect(existsSync(join(archived.path!, 'project', 'shared', 'PROJECT_GOAL.md'))).toBe(true);
+
+    const resetRes = await fetch(url('/api/lab/reset'), { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+    const reset = (await resetRes.json()) as { ok: boolean };
+    expect(reset.ok).toBe(true);
+    expect(existsSync(join(home, 'project', 'lab.db'))).toBe(false);
+    // goal is gone after reset
+    const goalRes = await fetch(url('/api/lab/goal'));
+    expect(((await goalRes.json()) as { goal: string | null }).goal).toBeNull();
+    // archive survived the reset
+    expect(existsSync(join(archived.path!, 'project', 'shared', 'PROJECT_GOAL.md'))).toBe(true);
+  });
+
   it('init rejects non-git targets', async () => {
     await boot();
     const notARepo = mkdtempSync(join(tmpdir(), 'antfarm-nogit-'));

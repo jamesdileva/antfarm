@@ -1,4 +1,4 @@
-import { mkdirSync, existsSync, rmSync } from 'node:fs';
+import { mkdirSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { join } from 'node:path';
 import { createRepos, openDb } from '@antfarm/db';
@@ -237,18 +237,32 @@ async function run(): Promise<void> {
 
 async function reset(): Promise<void> {
   const all = hasFlag('--yes');
-  const paths = homePaths(loadConfig().projectRoot);
-  const dbPath = paths.db();
-  rmSync(dbPath, { force: true });
-  rmSync(`${dbPath}-wal`, { force: true });
-  rmSync(`${dbPath}-shm`, { force: true });
-  console.log(`removed ${dbPath}`);
-  if (all) {
-    rmSync(paths.project, { recursive: true, force: true });
-    console.log(`removed ${paths.project}/ entirely (--yes)`);
-  } else {
-    console.log('workspace/shared/agent dirs kept; pass --yes to wipe the whole project/ tree');
+  const cfg = loadConfig();
+  const paths = homePaths(cfg.projectRoot);
+  if (!hasFlag('--no-archive') && existsSync(paths.db())) {
+    const { archiveLab } = await import('./archive.js');
+    const result = archiveLab(cfg);
+    console.log(result.ok ? `archived to ${result.path}` : `archive skipped: ${result.error}`);
   }
+  const { resetLab } = await import('./archive.js');
+  const result = resetLab(cfg, all);
+  if (!result.ok) {
+    console.error(result.error);
+    process.exit(1);
+  }
+  console.log(`removed ${paths.db()}`);
+  if (all) console.log(`removed ${paths.project}/ entirely (--yes)`);
+  else console.log('workspace/shared/agent dirs kept; pass --yes to wipe the whole project/ tree');
+}
+
+async function archiveCmd(): Promise<void> {
+  const { archiveLab } = await import('./archive.js');
+  const result = archiveLab(loadConfig());
+  if (!result.ok) {
+    console.error(result.error);
+    process.exit(1);
+  }
+  console.log(`archived to ${result.path}`);
 }
 
 async function nurseryCmd(): Promise<void> {
@@ -331,6 +345,7 @@ async function main(): Promise<void> {
   // `run` is also the implicit command when only flags are passed
   if (cmd === 'init') await init();
   else if (cmd === 'reset') await reset();
+  else if (cmd === 'archive') await archiveCmd();
   else if (cmd === 'nursery') await nurseryCmd();
   else if (cmd === 'stats') stats();
   else if (cmd === 'serve') {
@@ -345,7 +360,7 @@ async function main(): Promise<void> {
     console.log(`antfarm serve: control API + dashboard on http://127.0.0.1:${app.port}`);
   } else if (cmd === undefined || cmd === 'run' || cmd.startsWith('--')) await run();
   else {
-    console.error(`unknown command: ${cmd} (try: init | reset | nursery | stats | serve | run)`);
+    console.error(`unknown command: ${cmd} (try: init | archive | reset | nursery | stats | serve | run)`);
     process.exit(1);
   }
 }
