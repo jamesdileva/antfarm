@@ -296,7 +296,7 @@ async function refreshGoal() {
   try {
     const g = await (await fetch('/api/lab/goal')).json();
     if (g.goal) {
-      el.textContent = 'current goal (' + (g.mode || 'directed') + ' mode):\n' + g.goal;
+      el.textContent = 'current goal (' + (g.mode || 'directed') + ' mode)' + String.fromCharCode(10) + g.goal;
       el.style.display = 'block';
     } else {
       el.textContent = '';
