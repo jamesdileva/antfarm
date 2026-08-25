@@ -163,12 +163,14 @@ function page(): string {
 <button id="archive" data-testid="colony-archive">Archive lab</button>
 <button id="reset" data-testid="colony-reset">Reset lab</button>
 <div id="goal-current" data-testid="goal-current" style="display:none;border:1px solid #30363d;border-radius:6px;padding:8px 12px;margin-bottom:10px;white-space:pre-wrap;color:#c9d1d9;font-size:12px"></div>
-<div class="sub">goal presets — pick one to fill the editor (edit freely), then Set goal. Autonomous needs no goal.</div>
+<div class="sub">goal presets - pick one to fill the editor (edit freely), then Set goal. Autonomous needs no goal.</div>
+<div>
 <button id="preset-directed" data-testid="goal-preset-directed">Preset: Directed (docs-driven)</button>
 <button id="preset-constrained" data-testid="goal-preset-constrained">Preset: Constrained (local-only)</button>
 <button id="preset-autonomous" data-testid="goal-preset-autonomous">Clear goal (autonomous)</button>
-<textarea id="goal-input" data-testid="goal-input" placeholder="mission / constraints for the colony (or use a preset)" style="width:560px;height:110px;vertical-align:top"></textarea><br>
-<button id="set-goal" data-testid="goal-set">Set goal</button>
+</div>
+<textarea id="goal-input" data-testid="goal-input" placeholder="mission / constraints for the colony (or use a preset)" style="width:560px;height:84px;display:block;margin-top:6px"></textarea>
+<button id="set-goal" data-testid="goal-set" style="margin-top:6px">Set goal</button>
 <span id="colony-state" data-testid="colony-status"></span>
 <span id="control-msg"></span>
 </section>
@@ -279,7 +281,7 @@ async function control(endpoint, body) {
 }
 document.getElementById('start-dry').onclick = () => control('/api/lab/start', { live: false });
 document.getElementById('start-live').onclick = async () => {
-  if (await control('/api/lab/start', { live: true })) note('live colony starting…', '#3fb950');
+  if (await control('/api/lab/start', { live: true })) note('live colony started', '#3fb950');
 };
 document.getElementById('stop').onclick = () => control('/api/lab/stop');
 document.getElementById('archive').onclick = async () => {
