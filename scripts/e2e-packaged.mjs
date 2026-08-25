@@ -3,7 +3,8 @@
 // via HTTP → run dry colony to completion → verify artifacts → tree-kill.
 // usage: npm run e2e   (binds 4177 — stop any running serve/dashboard first)
 import { spawn, execSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const EXE = 'release/win-unpacked/Antfarm.exe'.replace(/\//g, '\\');
@@ -55,8 +56,13 @@ try {
 }
 
 async function main() {
+  // isolated data-home so the smoke run never touches the user's real lab
+  const e2eHome = mkdtempSync(join(tmpdir(), 'antfarm-e2e-home-'));
+  process.on('exit', () => {
+    try { rmSync(e2eHome, { recursive: true, force: true }); } catch { /* best effort */ }
+  });
   log('launching packaged exe...');
-  const child = spawn(exePath, [], { detached: true, stdio: 'ignore' });
+  const child = spawn(exePath, ['--home', e2eHome], { detached: true, stdio: 'ignore' });
   child.unref();
 
   // 1. backend healthy (self-spawn + §3 rule 6)

@@ -71,8 +71,14 @@ function waitForHealthy(timeoutMs) {
 }
 
 async function createWindow() {
-  // §3 rule 4 analog: data home is a fixed sandbox dir, never __dirname/CWD
-  const homeDir = path.join(app.getPath('userData'), 'antfarm-home');
+  // §3 rule 4 analog: data home is a fixed sandbox dir, never __dirname/CWD.
+  // --home <dir> (or --home=<dir>) overrides userData — used by e2e/tests
+  // so smoke runs never touch the user's real lab.
+  const argv = process.argv.slice(app.isPackaged ? 1 : 0);
+  const homeFlag = argv.indexOf('--home');
+  const flagValue = homeFlag >= 0 && argv[homeFlag + 1] ? argv[homeFlag + 1] : undefined;
+  const eqArg = argv.find((a) => a.startsWith('--home='));
+  const homeDir = path.resolve(flagValue || (eqArg && eqArg.split('=').slice(1).join('=')) || path.join(app.getPath('userData'), 'antfarm-home'));
   orchestrator = startOrchestrator(homeDir);
 
   try {
