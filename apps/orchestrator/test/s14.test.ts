@@ -91,6 +91,26 @@ describe('serve control API', () => {
       .toContain('GUI-created lab');
   });
 
+  it('goal endpoint returns null before seeding and the goal after init', async () => {
+    await boot();
+    const resBefore = await fetch(url('/api/lab/goal'));
+    const before = (await resBefore.json()) as { goal: string | null; mode: string };
+    expect(before.goal).toBeNull();
+    expect(before.mode).toBe('directed');
+
+    const initRes = await fetch(url('/api/lab/init'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ goal: 'visible mission', mode: 'constrained' }),
+    });
+    expect((await initRes.json()).ok).toBe(true);
+
+    const resAfter = await fetch(url('/api/lab/goal'));
+    const after = (await resAfter.json()) as { goal: string | null; mode: string };
+    expect(after.goal).toBe('visible mission');
+    expect(after.mode).toBe('constrained');
+  });
+
   it('init rejects non-git targets', async () => {
     await boot();
     const notARepo = mkdtempSync(join(tmpdir(), 'antfarm-nogit-'));

@@ -160,6 +160,7 @@ function page(): string {
 <button id="start-dry" data-testid="colony-start-dry">Start dry-run</button>
 <button id="start-live" data-testid="colony-start-live">Start live</button>
 <button id="stop" data-testid="colony-stop">Stop</button>
+<div id="goal-current" data-testid="goal-current" style="display:none;border:1px solid #30363d;border-radius:6px;padding:8px 12px;margin-bottom:10px;white-space:pre-wrap;color:#c9d1d9;font-size:12px"></div>
 <input id="goal-input" data-testid="goal-input" placeholder="mission / constraints for the colony" style="width:300px">
 <button id="set-goal" data-testid="goal-set">Set goal</button>
 <span id="colony-state" data-testid="colony-status"></span>
@@ -275,12 +276,27 @@ document.getElementById('start-live').onclick = async () => {
   if (await control('/api/lab/start', { live: true })) note('live colony starting…', '#3fb950');
 };
 document.getElementById('stop').onclick = () => control('/api/lab/stop');
+async function refreshGoal() {
+  const el = document.getElementById('goal-current');
+  try {
+    const g = await (await fetch('/api/lab/goal')).json();
+    if (g.goal) {
+      el.textContent = 'current goal (' + (g.mode || 'directed') + ' mode):\n' + g.goal;
+      el.style.display = 'block';
+    } else {
+      el.textContent = '';
+      el.style.display = 'none';
+    }
+  } catch { /* serve mode only */ }
+}
+refreshGoal();
 document.getElementById('set-goal').onclick = async () => {
   const goal = document.getElementById('goal-input').value.trim();
   if (!goal) { note('enter a mission first', '#f85149'); return; }
   if (await control('/api/lab/init', { goal })) {
     note('goal saved — applies next cycle', '#3fb950');
     document.getElementById('goal-input').value = '';
+    refreshGoal();
   }
 };
 setInterval(async () => {

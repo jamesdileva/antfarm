@@ -2,6 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse, type Server } 
 import { handle as dashboardHandle } from '@antfarm/dashboard';
 import { ColonyManager, initLab, currentConfig, configPath } from './serve-core.js';
 import { antfarmHome, homePaths } from './home.js';
+import { readGoal } from './goal.js';
 
 export interface ServeApp {
   server: Server;
@@ -15,6 +16,7 @@ export function createServeHandler(manager: ColonyManager): (req: IncomingMessag
 
   const CONTROL_ROUTES: Record<string, 'GET' | 'POST'> = {
     '/api/status': 'GET',
+    '/api/lab/goal': 'GET',
     '/api/lab/init': 'POST',
     '/api/lab/start': 'POST',
     '/api/lab/stop': 'POST',
@@ -39,6 +41,11 @@ export function createServeHandler(manager: ColonyManager): (req: IncomingMessag
 
     if (url === '/api/status') {
       json(200, { colony: manager.status(), home: antfarmHome() });
+      return;
+    }
+    if (url === '/api/lab/goal') {
+      const paths = homePaths(currentConfig().projectRoot);
+      json(200, { goal: readGoal(paths.project), mode: currentConfig().mode });
       return;
     }
     if (url === '/api/lab/init') {
