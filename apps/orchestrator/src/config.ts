@@ -73,7 +73,8 @@ export function mergeConfig(base: LabConfig, raw: unknown): LabConfig {
   if (typeof r.idleTickMs === 'number') out.idleTickMs = r.idleTickMs;
   if (typeof r.exhaustionCooldownMs === 'number') out.exhaustionCooldownMs = r.exhaustionCooldownMs;
   if (typeof r.sessionGc === 'boolean') out.sessionGc = r.sessionGc;
-  if (typeof r.workspacePath === 'string' && r.workspacePath.trim()) out.workspacePath = r.workspacePath.trim();
+  if (r.workspacePath === null) delete out.workspacePath;
+  else if (typeof r.workspacePath === 'string' && r.workspacePath.trim()) out.workspacePath = r.workspacePath.trim();
   if (typeof r.budgets === 'object' && r.budgets !== null) {
     const b = r.budgets as Record<string, unknown>;
     if (typeof b.maxTokensPerCycle === 'number') out.budgets.maxTokensPerCycle = b.maxTokensPerCycle;

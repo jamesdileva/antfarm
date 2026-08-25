@@ -214,6 +214,15 @@ describe('config: workspacePath + sessionGc merge', () => {
     expect(loadConfigFrom(join(dir0(), 'missing.json')).sessionGc).toBe(false); // default
   });
 
+  it('workspacePath null clears the key (back to own-workspace mode)', () => {
+    const base = mergeConfig(loadConfigFrom(join(dir0(), 'missing.json')), {
+      workspacePath: 'J:/projects/nexus',
+    });
+    expect(base.workspacePath).toBe('J:/projects/nexus');
+    const cleared = mergeConfig(base, { workspacePath: null });
+    expect(cleared.workspacePath).toBeUndefined();
+  });
+
   function dir0(): string {
     return mkdtempSync(join(tmpdir(), 'antfarm-s12cfg-'));
   }

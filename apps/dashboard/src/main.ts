@@ -311,7 +311,7 @@ document.getElementById('save').onclick = async () => {
   const wsVal = document.getElementById('s-ws').value.trim();
   const patch = {
     ...(modelVal ? { model: modelVal } : {}),
-    ...(wsVal ? { workspacePath: wsVal } : {}),
+    ...(wsVal ? { workspacePath: wsVal } : { workspacePath: null }),
     sessionGc: document.getElementById('s-gc').checked,
     budgets: { maxTokensPerCycle: num('s-tokens'), maxCyclesPerHour: num('s-cycles') },
     idleTickMs: num('s-idle'),
