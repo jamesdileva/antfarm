@@ -8,7 +8,8 @@ export const RefSchema = z.object({
 
 export const MailAction = z.object({
   to: z.string().min(1),
-  type: z.enum(MessageTypes),
+  /** models instinctively reply with 'ANSWER'; accept it as STATUS instead of failing the cycle */
+  type: z.preprocess((v) => (v === 'ANSWER' ? 'STATUS' : v), z.enum(MessageTypes)),
   subject: z.string().min(1).max(120),
   body: z.string().min(1),
   priority: z.number().int().min(1).max(9).optional(),
