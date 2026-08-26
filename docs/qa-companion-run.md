@@ -15,8 +15,8 @@ prerequisite.
 Every prior project (md-kb, taskline, wcjs) was bounded and finished in a
 night. This one is **never done**: it eats every future test run, its case
 base compounds nightly, and it has a live accuracy metric instead of vibes.
-It is also the first project with a natural multi-agent role split: parents
-teach, tess uses.
+It is also the first project where the product itself **compounds**: every
+failure taught to it is a failure the colony never pays to diagnose again.
 
 ---
 
@@ -86,8 +86,6 @@ one. This loop is the product - run it every cycle there were failures.
 - [ ] One full teacher loop exercised live (failure -> record -> parent
       correction -> improved diagnosis on repeat)
 - [ ] README with usage; DECISIONS.md entries for any parked choices
-- [ ] tess (Analyst) uses `lookup` on a real failure and files a REVIEW on
-      the result
 
 ## Notes
 
