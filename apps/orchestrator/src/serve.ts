@@ -87,8 +87,10 @@ export function createServeHandler(manager: ColonyManager): (req: IncomingMessag
           json(409, { ok: false, error: `colony is ${manager.status().state} — stop it before resetting` });
           return;
         }
+        // parity with CLI reset: snapshot before wipe (best effort)
+        const archived = archiveLab(currentConfig());
         const result = resetLab(currentConfig(), body.all !== false);
-        json(result.ok ? 200 : 400, result);
+        json(result.ok ? 200 : 400, { ...result, archivedAt: archived.ok ? archived.path : undefined });
       });
       return;
     }

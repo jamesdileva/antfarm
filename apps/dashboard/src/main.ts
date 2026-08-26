@@ -163,11 +163,11 @@ function page(): string {
 <button id="archive" data-testid="colony-archive">Archive lab</button>
 <button id="reset" data-testid="colony-reset">Reset lab</button>
 <div id="goal-current" data-testid="goal-current" style="display:none;border:1px solid #30363d;border-radius:6px;padding:8px 12px;margin-bottom:10px;white-space:pre-wrap;color:#c9d1d9;font-size:12px"></div>
-<div class="sub">goal presets - pick one to fill the editor (edit freely), then Set goal. Autonomous needs no goal.</div>
+<div class="sub">three setups - pick one to fill the editor (edit freely), then Set goal. Setup 1: also set workspacePath in Settings below.</div>
 <div>
-<button id="preset-directed" data-testid="goal-preset-directed">Preset: Directed (docs-driven)</button>
-<button id="preset-constrained" data-testid="goal-preset-constrained">Preset: Constrained (local-only)</button>
-<button id="preset-autonomous" data-testid="goal-preset-autonomous">Clear goal (autonomous)</button>
+<button id="preset-directed" data-testid="goal-preset-directed">1. Directed @ workspace</button>
+<button id="preset-constrained" data-testid="goal-preset-constrained">2. Project vote first (no direction)</button>
+<button id="preset-autonomous" data-testid="goal-preset-autonomous">3. Full freedom (no goal, no vote)</button>
 </div>
 <textarea id="goal-input" data-testid="goal-input" placeholder="mission / constraints for the colony (or use a preset)" style="width:560px;height:84px;display:block;margin-top:6px"></textarea>
 <button id="set-goal" data-testid="goal-set" style="margin-top:6px">Set goal</button>
@@ -360,12 +360,12 @@ document.getElementById('preset-constrained').onclick = () => {
   note('constrained preset loaded - edit if needed, then Set goal', '#58a6ff');
 };
 document.getElementById('preset-autonomous').onclick = async () => {
-  if (!confirm('Clear PROJECT_GOAL.md? Agents will run on drives alone (no mission text).')) return;
+  if (!confirm('Full freedom: clears PROJECT_GOAL.md AND turns off the project-selection vote. Agents run on drives alone.')) return;
   pendingMode = undefined;
   document.getElementById('goal-input').value = '';
-  const res = await fetch('/api/lab/init', { method: 'POST', headers: {'content-type':'application/json'}, body: JSON.stringify({ clearGoal: true }) });
+  const res = await fetch('/api/lab/init', { method: 'POST', headers: {'content-type':'application/json'}, body: JSON.stringify({ clearGoal: true, mode: 'directed' }) });
   const out = await res.json();
-  if (out.ok) { note('goal cleared - autonomous mode', '#3fb950'); refreshGoal(); }
+  if (out.ok) { note('full freedom active - no goal, no selection vote', '#3fb950'); refreshGoal(); }
   else note('error: ' + out.error, '#f85149');
 };
 document.getElementById('set-goal').onclick = async () => {

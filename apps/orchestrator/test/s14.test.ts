@@ -150,10 +150,12 @@ describe('serve control API', () => {
     const res = await fetch(url('/api/lab/init'), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ clearGoal: true }),
+      body: JSON.stringify({ clearGoal: true, mode: 'directed' }),
     });
     expect((await res.json()).ok).toBe(true);
     expect(existsSync(join(home, 'project', 'shared', 'PROJECT_GOAL.md'))).toBe(false);
+    // full-freedom preset also flips the gate off
+    expect(JSON.parse(readFileSync(join(home, 'lab.config.json'), 'utf8')).mode).toBe('directed');
     const goalRes = await fetch(url('/api/lab/goal'));
     expect(((await goalRes.json()) as { goal: string | null }).goal).toBeNull();
   });

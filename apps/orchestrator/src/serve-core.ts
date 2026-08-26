@@ -109,9 +109,13 @@ export function initLab(input: {
   clearGoal?: boolean;
 }): { ok: true; message: string } | { ok: false; error: string } {
   const paths = homePaths(loadConfigFrom(homePaths().config).projectRoot);
+  if (input.mode) {
+    const cfg: LabConfig = { ...loadConfigFrom(paths.config), mode: input.mode };
+    writeConfig(paths.config, cfg);
+  }
   if (input.clearGoal) {
     rmSync(join(paths.project, 'shared', GOAL_FILE), { force: true });
-    return { ok: true, message: 'goal cleared — autonomous mode' };
+    return { ok: true, message: 'goal cleared — full freedom mode (no selection vote)' };
   }
   if (input.target) {
     if (!existsSync(input.target)) return { ok: false, error: `target does not exist: ${input.target}` };
@@ -122,10 +126,6 @@ export function initLab(input: {
       return { ok: false, error: 'lab.db already exists — reset first (`reset --yes`) for a fresh per-project lab' };
     }
     const cfg: LabConfig = { ...loadConfigFrom(paths.config), workspacePath: resolve(input.target) };
-    writeConfig(paths.config, cfg);
-  }
-  if (input.mode) {
-    const cfg: LabConfig = { ...loadConfigFrom(paths.config), mode: input.mode };
     writeConfig(paths.config, cfg);
   }
   let message = '';
