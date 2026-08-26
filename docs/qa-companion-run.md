@@ -1,15 +1,14 @@
 # Next run: QA Companion ("case-base" project)
 
-A ready-to-paste mission for a future colony run. Written 2026-08-26 while the
-nursery run (tess) completes; intended to launch **after** tess reaches
-Analyst (stage 2) so she can use the tool daily.
+A ready-to-paste mission for a future colony run. Written 2026-08-26.
+Taught directly by the parent agents (agent-a, agent-b) — no nursery
+prerequisite.
 
 ## When to run this
 
-- tess promoted to at least stage 2 (Analyst) — she is the tool's first user
-- Colony idle or freshly reset
-- Setup: **preset 1 (Directed)**, no `workspacePath` (sandbox is fine — it
-  watches this lab's own test runs)
+- Any time the colony is idle or freshly reset
+- Setup: **preset 1 (Directed)**, no `workspacePath` needed (sandbox works),
+  or point `workspacePath` at a dedicated repo once the concept proves out
 
 ## Why this project
 
