@@ -144,6 +144,24 @@ export function configPath(): string {
   return homePaths().config;
 }
 
+/** Base agents plus any living nursery babies (for Human-channel addressing). */
+export function listAgents(): Array<{ name: string; stage?: number; purpose: string }> {
+  const cfg = loadConfigFrom(homePaths().config);
+  const out: Array<{ name: string; stage?: number; purpose: string }> = [
+    { name: 'agent-a', purpose: 'builder' },
+    { name: 'agent-b', purpose: 'critic/coordinator' },
+  ];
+  try {
+    const db = openDb(homePaths(cfg.projectRoot).db());
+    const repos = createRepos(db);
+    for (const baby of repos.nursery.alive()) {
+      out.push({ name: baby.id, stage: baby.stage, purpose: baby.purpose.slice(0, 120) });
+    }
+    db.close();
+  } catch { /* no lab yet — base agents only */ }
+  return out;
+}
+
 // --- human voice: direct mail + task creation from the GUI ---
 
 const AGENTS = ['agent-a', 'agent-b'];

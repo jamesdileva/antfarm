@@ -1,6 +1,8 @@
 import { createServer, type IncomingMessage, type ServerResponse, type Server } from 'node:http';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { handle as dashboardHandle } from '@antfarm/dashboard';
-import { ColonyManager, initLab, currentConfig, configPath, humanMail, humanTask } from './serve-core.js';
+import { ColonyManager, initLab, currentConfig, configPath, humanMail, humanTask, listAgents } from './serve-core.js';
 import { antfarmHome, homePaths } from './home.js';
 import { readGoal, seedGoal } from './goal.js';
 import { archiveLab, resetLab } from './archive.js';
@@ -49,8 +51,18 @@ export function createServeHandler(manager: ColonyManager): (req: IncomingMessag
       return;
     }
     if (url === '/api/lab/goal') {
-      const paths = homePaths(currentConfig().projectRoot);
-      json(200, { goal: readGoal(paths.project), mode: currentConfig().mode });
+      const cfg = currentConfig();
+      const paths = homePaths(cfg.projectRoot);
+      const wsGoalPath = join(cfg.workspacePath ?? join(paths.project, 'workspace'), 'PROJECT_GOAL.md');
+      let workspaceGoal: string | null = null;
+      try {
+        workspaceGoal = readFileSync(wsGoalPath, 'utf8').trim() || null;
+      } catch { /* no self-authored goal yet */ }
+      json(200, { goal: readGoal(paths.project), mode: cfg.mode, workspaceGoal });
+      return;
+    }
+    if (url === '/api/lab/agents') {
+      json(200, { agents: listAgents() });
       return;
     }
     if (url === '/api/lab/init') {

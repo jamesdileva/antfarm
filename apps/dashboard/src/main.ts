@@ -313,21 +313,34 @@ document.getElementById('reset').onclick = async () => {
   if (!confirm('This cannot be undone. Really wipe everything?')) return;
   if (await control('/api/lab/reset', { all: true })) note('lab reset — set a goal and start fresh', '#3fb950');
   refreshGoal();
+refreshAgents();
 };
 async function refreshGoal() {
   const el = document.getElementById('goal-current');
   try {
     const g = await (await fetch('/api/lab/goal')).json();
-    if (g.goal) {
-      el.textContent = 'current goal (' + (g.mode || 'directed') + ' mode)' + String.fromCharCode(10) + g.goal;
-      el.style.display = 'block';
-    } else {
-      el.textContent = '';
-      el.style.display = 'none';
-    }
+    let text = '';
+    if (g.goal) text += 'current goal (' + (g.mode || 'directed') + ' mode)' + String.fromCharCode(10) + g.goal;
+    if (g.workspaceGoal) text += (text ? String.fromCharCode(10) + String.fromCharCode(10) : '') + '[self-authored by colony]' + String.fromCharCode(10) + g.workspaceGoal;
+    if (text) { el.textContent = text; el.style.display = 'block'; }
+    else { el.textContent = ''; el.style.display = 'none'; }
   } catch { /* serve mode only */ }
 }
-refreshGoal();
+async function refreshAgents() {
+  try {
+    const a = await (await fetch('/api/lab/agents')).json();
+    const sel = document.getElementById('hm-to');
+    const current = sel.value;
+    sel.innerHTML = '';
+    for (const agent of a.agents) {
+      const opt = document.createElement('option');
+      opt.value = agent.name;
+      opt.textContent = agent.stage ? agent.name + ' (stage ' + agent.stage + ')' : agent.name;
+      sel.appendChild(opt);
+    }
+    if ([...sel.options].some((o) => o.value === current)) sel.value = current;
+  } catch { /* serve mode only */ }
+}
 // goal presets - GUI-side fill-ins only; nothing reaches agents until Set goal.
 // NOTE: this code lives inside a template literal - no backticks, no dollar-brace, no backslash-n escapes.
 const NL = String.fromCharCode(10);
@@ -365,7 +378,8 @@ document.getElementById('preset-autonomous').onclick = async () => {
   document.getElementById('goal-input').value = '';
   const res = await fetch('/api/lab/init', { method: 'POST', headers: {'content-type':'application/json'}, body: JSON.stringify({ clearGoal: true, mode: 'directed' }) });
   const out = await res.json();
-  if (out.ok) { note('full freedom active - no goal, no selection vote', '#3fb950'); refreshGoal(); }
+  if (out.ok) { note('full freedom active - no goal, no selection vote', '#3fb950'); refreshGoal();
+refreshAgents(); }
   else note('error: ' + out.error, '#f85149');
 };
 document.getElementById('set-goal').onclick = async () => {
@@ -376,6 +390,7 @@ document.getElementById('set-goal').onclick = async () => {
     document.getElementById('goal-input').value = '';
     pendingMode = undefined;
     refreshGoal();
+refreshAgents();
   }
 };
 // human channel (serve mode)
@@ -420,6 +435,11 @@ setInterval(async () => {
     document.getElementById('colony-state').textContent = 'colony: ' + s.colony.state + (s.colony.live ? ' (live)' : '');
   } catch { /* serve mode only */ }
 }, 2000);
+// goal panel polls too — agent-authored goals and human seeds pop in live
+setInterval(refreshGoal, 5000);
+setInterval(refreshAgents, 15000);
+refreshGoal();
+refreshAgents();
 document.getElementById('save').onclick = async () => {
   const num = (id) => { const v = Number(document.getElementById(id).value); return Number.isFinite(v) && v > 0 ? v : undefined; };
   const modelVal = document.getElementById('s-model').value.trim();
