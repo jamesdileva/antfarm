@@ -458,6 +458,9 @@ archived project + db fully intact and inspectable; all via GUI alone.
 
 ## Later / backlog
 
+- First-run preflight in the packaged shell: detect a missing `opencode`
+  install and guide/auto-fetch it before colony start (fresh machines
+  currently fail at first live start)
 - >2 parent agents and role specialization (schema already supports it;
   scheduling policies don't yet)
 - Additional OpenCode-runtime children (more-of-the-same scaling; less
