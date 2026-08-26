@@ -38,6 +38,28 @@ export interface Proposal {
 
 const PROPOSE_RE = /^PROPOSE AGENT ([a-z0-9-]+):\s*(.+)$/i;
 
+/**
+ * Detects a nursery INTENT that failed parsing — right subject shape, wrong
+ * body/labels. Returns a teaching message, or null if this is not a malformed
+ * nursery mail. Silent rejection here cost two births (tess, quill): the
+ * parents staged assignments for agents the platform never registered.
+ */
+export function detectMalformedNursery(mail: MailRow): string | null {
+  const propose = mail.subject.match(PROPOSE_RE);
+  if (propose) {
+    if (mail.type !== 'DECISION') return `PROPOSE AGENT mails must be type DECISION (got ${mail.type}).`;
+    if (!mail.body.match(/Purpose:/i)) return 'proposal body must contain a "Purpose:" section.';
+    if (!mail.body.match(/Evidence:/i)) return 'proposal body must contain an "Evidence:" section.';
+    return null;
+  }
+  const promote = mail.subject.match(/^PROMOTE AGENT ([a-z0-9-]+) TO STAGE (\d)$/i);
+  if (promote) {
+    if (mail.type !== 'DECISION') return `PROMOTE AGENT mails must be type DECISION (got ${mail.type}).`;
+    return null;
+  }
+  return null;
+}
+
 /** Parse a DECISION mail into a nursery proposal, if it is one. */
 export function parseProposal(mail: MailRow): Proposal | null {
   const match = mail.subject.match(PROPOSE_RE);

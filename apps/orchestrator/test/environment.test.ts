@@ -161,6 +161,58 @@ describe('inbox survives failed cycles', () => {
   });
 });
 
+describe('nursery malformed proposals must not fail silently', () => {
+  it('PROPOSE subject with missing body sections files WARNING + event', async () => {
+    const { db, repos, dir } = setup();
+    const driver = {
+      pending: () => true,
+      run: async () => ({
+        mails: [{ to: 'agent-b', type: 'DECISION', subject: 'PROPOSE AGENT quill: QA verifier', body: 'PROPOSAL: name quill, role QA verifier - prove colony artifacts via harness.' }],
+        taskMoves: [],
+        summary: 'proposing',
+      }),
+    };
+    const deps: OrchestratorDeps = {
+      repos,
+      budgets: new Budgets({ maxTokensPerCycle: 5000, maxCyclesPerHour: 50 }),
+      drivers: { 'agent-a': driver },
+      agents: ['agent-a'],
+    };
+
+    await runCycle(deps, 'agent-a', 1);
+    expect(repos.events.byKind('procreation_malformed')).toHaveLength(1);
+    const warnings = repos.mail.queuedFor('agent-a').filter((m) => m.type === 'WARNING' && m.subject.includes('nursery protocol'));
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]!.body).toContain('Purpose:');
+    db.close();
+    cleanup(dir);
+  });
+
+  it('well-formed proposals still register normally', async () => {
+    const { db, repos, dir } = setup();
+    const driver = {
+      pending: () => true,
+      run: async () => ({
+        mails: [{ to: 'agent-b', type: 'DECISION', subject: 'PROPOSE AGENT quill: QA verifier', body: 'Purpose: verify colony artifacts.\nEvidence: harness green at HEAD.' }],
+        taskMoves: [],
+        summary: 'proposing',
+      }),
+    };
+    const deps: OrchestratorDeps = {
+      repos,
+      budgets: new Budgets({ maxTokensPerCycle: 5000, maxCyclesPerHour: 50 }),
+      drivers: { 'agent-a': driver },
+      agents: ['agent-a'],
+    };
+
+    await runCycle(deps, 'agent-a', 1);
+    expect(repos.events.byKind('agent_proposed')).toHaveLength(1);
+    expect(repos.events.byKind('procreation_malformed')).toHaveLength(0);
+    db.close();
+    cleanup(dir);
+  });
+});
+
 describe('malformed-output teaching loop', () => {
   it('files a WARNING back to the sender and keeps going', async () => {
     const { db, repos, dir } = setup();

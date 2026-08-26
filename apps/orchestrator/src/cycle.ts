@@ -4,7 +4,7 @@ import type { ActionsOutputT } from './actions.js';
 import type { Budgets } from './budgets.js';
 import { buildSituation, hasDecision, type SituationContext } from './situation.js';
 import { applyMemoryUpdate } from './memory.js';
-import { capabilitiesFor, parsePromotion, parseProposal, tryBirth, tryPromotion } from './nursery.js';
+import { capabilitiesFor, detectMalformedNursery, parsePromotion, parseProposal, tryBirth, tryPromotion } from './nursery.js';
 
 export interface OrchestratorDeps {
   repos: Repos;
@@ -281,6 +281,27 @@ function commitActions(deps: OrchestratorDeps, agent: string, sessionId: number,
 function maybeProcreate(deps: OrchestratorDeps, filed: import('@antfarm/db').MailRow): void {
   const { repos } = deps;
   const projectRoot = deps.situation?.projectRoot ?? 'project';
+  // Nursery intent that failed parsing must SCREAM: silent rejection cost two
+  // births (tess/quill era) — parents staged assignments for unregistered agents.
+  const malformed = detectMalformedNursery(filed);
+  if (malformed) {
+    repos.events.append({
+      kind: 'procreation_malformed',
+      actor: filed.from_agent,
+      payload: { reason: malformed, subject: filed.subject },
+    });
+    const pending = repos.mail.queuedFor(filed.from_agent);
+    if (!pending.some((m) => m.type === 'WARNING' && m.subject.includes('nursery protocol'))) {
+      repos.mail.enqueue('orchestrator', {
+        to: filed.from_agent,
+        type: 'WARNING',
+        subject: 'your nursery protocol mail could not be processed',
+        body: `Error: ${malformed}\n\nA valid proposal is a DECISION mail, subject 'PROPOSE AGENT <lowercase-name>: <purpose>', whose body contains BOTH sections:\nPurpose: <one-line purpose>\nEvidence: <why this agent, why now>\n\nRespond again with the corrected format.`,
+        priority: 1,
+      });
+    }
+    return;
+  }
   if (parseProposal(filed)) {
     repos.events.append({
       kind: 'agent_proposed',
