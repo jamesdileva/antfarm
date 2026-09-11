@@ -178,6 +178,38 @@ describe('OpenCodeDriver', () => {
     expect(prompts).toBe(1);
   });
 
+  it('does NOT retry quota/usage errors — quota resets in ~24h, retrying is pointless', async () => {
+    let prompts = 0;
+    const client: OpencodeSessionClient = {
+      session: {
+        create: async () => ({ data: { id: 'sess-quota' } }),
+        prompt: async () => {
+          prompts++;
+          throw new Error('Subscribe to GO free usage exceeded, retrying in 24 hours');
+        },
+      },
+    };
+    const driver = new OpenCodeDriver({ client, driveSheet: BUILDER });
+    await expect(driver.run({ agent: 'agent-a', cycle: 1, situation: 's' })).rejects.toThrow(/provider error \(no retry\)/i);
+    expect(prompts).toBe(1);
+  });
+
+  it('does NOT retry in-band quota errors from assistant', async () => {
+    let prompts = 0;
+    const client: OpencodeSessionClient = {
+      session: {
+        create: async () => ({ data: { id: 'sess-quota-band' } }),
+        prompt: async () => {
+          prompts++;
+          return { data: { info: { error: { name: 'QuotaExceeded', message: 'free usage limit reached' } }, parts: [] } };
+        },
+      },
+    };
+    const driver = new OpenCodeDriver({ client, driveSheet: BUILDER });
+    await expect(driver.run({ agent: 'agent-a', cycle: 1, situation: 's' })).rejects.toThrow(/assistant error \(no retry\)/i);
+    expect(prompts).toBe(1);
+  });
+
   it('extracts usage defensively across shapes', () => {
     expect(extractUsage({ tokens: { input: 10, output: 5 }, cost: 0.02 }))
       .toEqual({ tokensIn: 10, tokensOut: 5, cost: 0.02, model: '' });

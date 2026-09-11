@@ -238,26 +238,38 @@ export class OpenCodeDriver implements AgentDriver {
         },
       });
     } catch (err) {
-      // Long cycles on slow models can outlive server/provider request
-      // windows (~5min observed). Tool progress lives IN the session —
-      // re-prompt it to continue rather than throwing the work away.
-      if (!/fetch failed|network|econn|socket|abort/i.test(String(err))) throw err;
-      this.retries.set(ctx.agent, Date.now());
-      result = await this.resume(sessionId, directory, systemText);
+      const msg = String(err);
+      // Transient network errors → retry same session (tool progress lives
+      // in the session — re-prompt rather than throwing work away).
+      if (/fetch failed|network|econn|socket|abort/i.test(msg)) {
+        this.retries.set(ctx.agent, Date.now());
+        result = await this.resume(sessionId, directory, systemText);
+      }
+      // Quota/auth/usage errors → throw immediately (no retry: quota won't
+      // reset for ~24h, retrying just burns cycles for nothing).
+      else if (/exceed|quota|usage|limit|subscribe|auth/i.test(msg)) {
+        throw new Error(`provider error (no retry): ${msg.slice(0, 300)}`);
+      }
+      // All other errors → re-throw
+      else {
+        throw err;
+      }
     }
 
     const info = result.data.info;
 
     // Provider-side transient errors (heavy load) also arrive as in-band
     // assistant errors — same-session resume applies to those too.
-    if (
-      info.error &&
-      /APIError|Overloaded|rate.?limit|internal/i.test(
-        `${info.error.name ?? ''} ${info.error.message ?? ''}`
-      )
-    ) {
-      this.retries.set(ctx.agent, Date.now());
-      result = await this.resume(sessionId, directory, systemText);
+    // Quota/auth errors are NOT retried (quota won't reset for ~24h).
+    if (info.error) {
+      const errText = `${info.error.name ?? ''} ${info.error.message ?? ''}`;
+      if (/exceed|quota|usage|limit|subscribe|auth/i.test(errText)) {
+        throw new Error(`assistant error (no retry): ${info.error.name ?? 'unknown'}: ${info.error.message ?? ''}`);
+      }
+      if (/APIError|Overloaded|rate.?limit|internal/i.test(errText)) {
+        this.retries.set(ctx.agent, Date.now());
+        result = await this.resume(sessionId, directory, systemText);
+      }
     }
 
     const info2 = result.data.info;

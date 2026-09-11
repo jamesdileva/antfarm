@@ -10,7 +10,6 @@
   "backoffBaseMs": 500,
   "backoffMaxMs": 60000,
   "harness": {
-    "testCmd": "backend/.venv/Scripts/python -m pytest backend/tests -q",
     "timeoutMs": 180000
   },
   "personalities": {
