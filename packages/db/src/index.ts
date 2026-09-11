@@ -7,6 +7,7 @@ import {
   NurseryRepo,
   SessionRepo,
   TaskRepo,
+  TranscriptRepo,
 } from './repositories.js';
 
 export * from './migrate.js';
@@ -20,6 +21,7 @@ export interface Repos {
   state: AgentStateRepo;
   memory: MemoryRepo;
   nursery: NurseryRepo;
+  transcripts: TranscriptRepo;
 }
 
 export function createRepos(db: Db): Repos {
@@ -31,6 +33,7 @@ export function createRepos(db: Db): Repos {
     state: new AgentStateRepo(db),
     memory: new MemoryRepo(db),
     nursery: new NurseryRepo(db),
+    transcripts: new TranscriptRepo(db),
   };
 }
 

@@ -84,7 +84,7 @@ export async function runCycle(deps: OrchestratorDeps, agent: string, cycle: num
         actor: agent,
         payload: { sessionId: session.id, timeoutMs: err.ms },
       });
-      await disposeIfGc(deps, driver, agent, false);
+      await disposeIfGc(deps, driver, agent, false, session.id);
       return { agent, status: 'done', sessionId: session.id, timedOut: true, failed: true };
     }
     // Malformed-output teaching loop (guide §4.2): the environment files a
@@ -139,7 +139,7 @@ export async function runCycle(deps: OrchestratorDeps, agent: string, cycle: num
     repos.state.setDecisionPointer(agent, decisionEvents[decisionEvents.length - 1]!.id);
   }
 
-  await disposeIfGc(deps, driver, agent, true);
+  await disposeIfGc(deps, driver, agent, true, session.id);
   return { agent, status: 'done', sessionId: session.id, productive };
 }
 
@@ -147,12 +147,31 @@ export async function runCycle(deps: OrchestratorDeps, agent: string, cycle: num
  * Session GC (S12): only SUCCESSFUL cycles are disposable. Failed or
  * interrupted sessions may hold recoverable progress (nexus lesson:
  * fetch-failed cycles die mid-work; the session is the only copy).
+ *
+ * Before deleting, captures the full session transcript (messages + parts)
+ * and stores it in lab.db's session_transcripts table for later analysis.
  */
-async function disposeIfGc(deps: OrchestratorDeps, driver: AgentDriver, agent: string, ok: boolean): Promise<void> {
+async function disposeIfGc(
+  deps: OrchestratorDeps,
+  driver: AgentDriver,
+  agent: string,
+  ok: boolean,
+  labSessionId: number
+): Promise<void> {
   if (!deps.sessionGc || !ok) return;
   try {
-    const d = driver as { disposeSession?: (a: string) => Promise<void> };
-    await d.disposeSession?.(agent);
+    const d = driver as { captureAndDispose?: (a: string) => Promise<{ transcript: string; opencodeSessionId: string } | null> };
+    const captured = await d.captureAndDispose?.(agent);
+    if (captured) {
+      const session = deps.repos.sessions.byId(labSessionId);
+      deps.repos.transcripts.save({
+        labSessionId,
+        opencodeSessionId: captured.opencodeSessionId,
+        agent,
+        cycle: session.cycle,
+        transcript: captured.transcript,
+      });
+    }
   } catch (err) {
     deps.repos.events.append({
       kind: 'session_gc_failed',

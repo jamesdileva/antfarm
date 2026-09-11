@@ -103,12 +103,24 @@ const M004 = `CREATE TABLE nursery_agents (
 const M005 = `ALTER TABLE sessions ADD COLUMN model TEXT NOT NULL DEFAULT '';
 `;
 
+const M006 = `CREATE TABLE session_transcripts (
+  id INTEGER PRIMARY KEY,
+  lab_session_id INTEGER NOT NULL REFERENCES sessions(id),
+  opencode_session_id TEXT NOT NULL,
+  agent TEXT NOT NULL,
+  cycle INTEGER NOT NULL,
+  transcript TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+`;
+
 const MIGRATIONS: Array<{ version: number; file: string; sql: string }> = [
   { version: 1, file: '001_init.sql', sql: M001 },
   { version: 2, file: '002_agent_state.sql', sql: M002 },
   { version: 3, file: '003_memory.sql', sql: M003 },
   { version: 4, file: '004_nursery.sql', sql: M004 },
   { version: 5, file: '005_sessions_model.sql', sql: M005 },
+  { version: 6, file: '006_session_transcripts.sql', sql: M006 },
 ];
 
 export function openDb(path: string): Db {

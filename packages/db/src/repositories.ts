@@ -446,3 +446,55 @@ export class EventRepo {
     return this.db.prepare('SELECT * FROM events WHERE kind = ? ORDER BY id').all(kind) as EventRow[];
   }
 }
+
+export interface TranscriptRow {
+  id: number;
+  lab_session_id: number;
+  opencode_session_id: string;
+  agent: string;
+  cycle: number;
+  transcript: string;
+  created_at: string;
+}
+
+export class TranscriptRepo {
+  constructor(private db: Db) {}
+
+  save(input: {
+    labSessionId: number;
+    opencodeSessionId: string;
+    agent: string;
+    cycle: number;
+    transcript: string;
+  }): TranscriptRow {
+    const info = this.db
+      .prepare(
+        `INSERT INTO session_transcripts
+         (lab_session_id, opencode_session_id, agent, cycle, transcript, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        input.labSessionId,
+        input.opencodeSessionId,
+        input.agent,
+        input.cycle,
+        input.transcript,
+        new Date().toISOString()
+      );
+    return this.db
+      .prepare('SELECT * FROM session_transcripts WHERE id = ?')
+      .get(Number(info.lastInsertRowid)) as TranscriptRow;
+  }
+
+  byLabSessionId(labSessionId: number): TranscriptRow | undefined {
+    return this.db
+      .prepare('SELECT * FROM session_transcripts WHERE lab_session_id = ?')
+      .get(labSessionId) as TranscriptRow | undefined;
+  }
+
+  byAgent(agent: string, limit = 50): TranscriptRow[] {
+    return this.db
+      .prepare('SELECT * FROM session_transcripts WHERE agent = ? ORDER BY id DESC LIMIT ?')
+      .all(agent, limit) as TranscriptRow[];
+  }
+}

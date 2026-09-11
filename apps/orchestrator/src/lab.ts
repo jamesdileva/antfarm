@@ -129,6 +129,7 @@ export async function buildDeps(opts: {
         });
       },
       cycleTimeoutMs: cfg.cycleTimeoutMs,
+      sessionGc: cfg.sessionGc,
     },
     repos,
     cfg,

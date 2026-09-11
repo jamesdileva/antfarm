@@ -33,6 +33,15 @@ export interface OpencodeSessionClient {
         parts: Array<{ type: string; text?: string }>;
       };
     }>;
+    messages(args: {
+      path: { id: string };
+      query?: { directory?: string };
+    }): Promise<{
+      data: Array<{
+        info: { id: string; role: string; [k: string]: unknown };
+        parts: Array<{ type: string; text?: string; tool?: string; state?: unknown; [k: string]: unknown }>;
+      }>;
+    }>;
   } & {
     delete?(args: { path: { id: string } }): Promise<unknown>;
   };
@@ -180,6 +189,30 @@ export class OpenCodeDriver implements AgentDriver {
   /** Session id from the most recent run — used by session GC. */
   lastSessionId(agent: string): string | undefined {
     return this.sessionIds.get(agent);
+  }
+
+  /**
+   * Capture full session transcript (messages + parts) then delete the
+   * opencode session. Returns the JSON-serialized transcript for storage
+   * in lab.db's session_transcripts table.
+   */
+  async captureAndDispose(agent: string): Promise<{ transcript: string; opencodeSessionId: string } | null> {
+    const id = this.sessionIds.get(agent);
+    if (!id) return null;
+    this.sessionIds.delete(agent);
+    let transcript = '[]';
+    try {
+      const msgs = await this.client.session.messages({ path: { id } });
+      transcript = JSON.stringify(msgs.data ?? []);
+    } catch {
+      // If messages fetch fails, still delete the session
+    }
+    try {
+      await this.client.session.delete?.({ path: { id } });
+    } catch {
+      // best effort
+    }
+    return { transcript, opencodeSessionId: id };
   }
 
   /** Delete the stored opencode session (session GC, S12). */
