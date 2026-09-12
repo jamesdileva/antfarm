@@ -78,13 +78,31 @@ export async function runCycle(deps: OrchestratorDeps, agent: string, cycle: num
     // mail #302 was burned by a provider error and never seen)
     repos.mail.reQueue(inbox.map((m) => m.id));
     if (err instanceof CycleTimeoutError) {
+      // Capture transcript before finishing — the agent may have produced
+      // useful work that didn't complete within the timeout window.
+      if (deps.sessionGc) {
+        try {
+          const d = driver as { captureAndDispose?: (a: string) => Promise<{ transcript: string; opencodeSessionId: string } | null> };
+          const captured = await d.captureAndDispose?.(agent);
+          if (captured) {
+            repos.transcripts.save({
+              labSessionId: session.id,
+              opencodeSessionId: captured.opencodeSessionId,
+              agent,
+              cycle: session.cycle,
+              transcript: captured.transcript,
+            });
+          }
+        } catch {
+          // best effort — transcript capture failure doesn't block the cycle
+        }
+      }
       repos.sessions.finish(session.id, 'timed_out', {}, err.message);
       repos.events.append({
         kind: 'cycle_timed_out',
         actor: agent,
         payload: { sessionId: session.id, timeoutMs: err.ms },
       });
-      await disposeIfGc(deps, driver, agent, false, session.id);
       return { agent, status: 'done', sessionId: session.id, timedOut: true, failed: true };
     }
     // Malformed-output teaching loop (guide §4.2): the environment files a
