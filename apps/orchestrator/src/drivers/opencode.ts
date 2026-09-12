@@ -101,7 +101,10 @@ export async function createManagedClient(opts?: {
     hostname: opts?.hostname ?? '127.0.0.1',
     port,
     timeout: opts?.timeoutMs ?? 15_000,
-    ...(opts?.model ? { config: { model: opts.model } } : {}),
+    config: {
+      ...(opts?.model ? { model: opts.model } : {}),
+      permission: { external_directory: 'allow' },
+    },
   });
   const client = opencode.client as unknown as OpencodeSessionClient;
   return { client, serverUrl: opencode.server.url, close: () => opencode.server.close() };
@@ -254,6 +257,8 @@ export class OpenCodeDriver implements AgentDriver {
       'object, no prose before or after, matching exactly:',
       '{"mails":[{"to":"agent-a|agent-b","type":"QUESTION|IDEA|TASK|REVIEW|WARNING|DECISION|STATUS|HELP","subject":"≤120 chars","body":"...","priority":1-9}],"taskMoves":[{"taskId":number,"state":"proposed|active|blocked|done|dropped","owner":"agent id or null"}],"memoryUpdate":"compact working memory or empty string","summary":"one line"}',
       'Omit fields you do not need. No markdown fences.',
+      '',
+      'PERFORMANCE: When searching files, use specific paths like "src/**/*.ts" or "apps/**/*.ts". Never use root-level "**/*.ts" or "**/*" — they traverse all directories including node_modules and dist, causing extreme slowness (15-115 seconds per glob).',
       '',
       this.opts.context ? this.opts.context() : '',
     ]
