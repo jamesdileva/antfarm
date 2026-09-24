@@ -127,6 +127,9 @@ export function openDb(path: string): Db {
   const db = new Database(path);
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
+  // GUI/serve calls open a second connection while the loop holds the
+  // first — wait instead of throwing SQLITE_BUSY immediately (audit M7).
+  db.pragma('busy_timeout = 5000');
   migrate(db);
   return db;
 }

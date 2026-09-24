@@ -10,10 +10,10 @@ describe('archive + reset lab lifecycle', () => {
 
   beforeEach(() => {
     home = mkdtempSync(join(tmpdir(), 'antfarm-archive-'));
-    process.env.ANFARM_HOME = home;
+    process.env.ANTFARM_HOME = home;
   });
   afterEach(() => {
-    delete process.env.ANFARM_HOME;
+    delete process.env.ANTFARM_HOME;
     rmSync(home, { recursive: true, force: true, maxRetries: 3 });
   });
 

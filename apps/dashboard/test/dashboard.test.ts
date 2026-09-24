@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -84,5 +84,65 @@ describe('dashboard server', () => {
     const view = (await res.json()) as { agents: unknown[] };
     expect(view.agents).toHaveLength(2);
     await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  function postSettings(configPath: string, body: string): Promise<{ status: number; json: unknown }> {
+    const route = handle(dbPath, configPath);
+    return new Promise((resolve) => {
+      const handlers: Record<string, Array<(arg?: never) => void>> = {};
+      const req = {
+        url: '/api/settings',
+        method: 'POST',
+        on: (ev: string, fn: (arg?: never) => void) => {
+          (handlers[ev] ??= []).push(fn);
+          return req;
+        },
+      };
+      const { out, res } = fakeRes();
+      route(req as never, res as never);
+      for (const h of handlers['data'] ?? []) h(body as never);
+      for (const h of handlers['end'] ?? []) h();
+      // handler is synchronous after 'end'
+      resolve({ status: out.status, json: JSON.parse(out.body || '{}') as unknown });
+    });
+  }
+
+  it('rejects privileged keys and invalid values on /api/settings', async () => {
+    const configPath = join(dir, 'lab.config.json');
+
+    for (const patch of [
+      { harness: { buildCmd: 'powershell -c evil' } },
+      { personalities: { 'agent-a': 'do crimes' } },
+      { projectRoot: '/elsewhere' },
+    ]) {
+      const res = await postSettings(configPath, JSON.stringify(patch));
+      expect(res.status).toBe(400);
+      expect((res.json as { error: string }).error).toContain('not writable via the network API');
+    }
+
+    for (const patch of [
+      { budgets: { maxTokensPerCycle: -5, maxCyclesPerHour: 30 } },
+      { budgets: { maxTokensPerCycle: 1000, maxCyclesPerHour: 0 } },
+      { workspacePath: 'relative/path' },
+      { model: 'x'.repeat(201) },
+      { idleTickMs: 50 },
+      { sessionGc: 'yes' },
+    ]) {
+      const res = await postSettings(configPath, JSON.stringify(patch));
+      expect(res.status).toBe(400);
+    }
+    // no config file was created by rejected writes
+    expect(existsSync(configPath)).toBe(false);
+  });
+
+  it('accepts a valid settings patch', async () => {
+    const configPath = join(dir, 'lab.config.json');
+    const res = await postSettings(
+      configPath,
+      JSON.stringify({ model: 'test/model', budgets: { maxTokensPerCycle: 5000, maxCyclesPerHour: 10 } })
+    );
+    expect(res.status).toBe(200);
+    expect((res.json as { ok: boolean }).ok).toBe(true);
+    expect(existsSync(configPath)).toBe(true);
   });
 });

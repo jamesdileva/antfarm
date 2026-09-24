@@ -14,7 +14,10 @@ mattered). Items marked *[fixed S16.5]* were repaired in this pass.
 
 ## Critical
 
-### C1. Control API has zero authentication — any local process owns the colony
+### C1. Control API has zero authentication — any local process owns the colony ✅ FIXED S16.6
+> Shell-minted per-launch bearer token (`ANTFARM_API_TOKEN` env override);
+> required as header or `?token=` on every serve route incl. delegated
+> dashboard view/stream/settings; shell health probe validates colony JSON.
 - `apps/orchestrator/src/serve.ts:20-42` (route map), `:44-47` (`json()`
   helper), `:68-133` (mutating endpoints); `serve-core.ts:43-101`
   (start/stop), `:105-232` (init/humanMail/humanTask); dashboard
@@ -32,7 +35,7 @@ mattered). Items marked *[fixed S16.5]* were repaired in this pass.
   (owner-readable only), validated on every control/settings/view
   endpoint; validate `Host`/`Origin`; drop `ACAO: *`.
 
-### C2. Destructive endpoints are CSRF-able; invalid JSON defaults to "yes, wipe"
+### C2. Destructive endpoints are CSRF-able; invalid JSON defaults to "yes, wipe" ✅ FIXED S16.6
 - `serve.ts:139-153` (`readBody`: unbounded concat, `catch → {}`),
   `:96-108` (reset: `body.all !== false` → full wipe on `{}`),
   `:79-95` (start/archive/stop need no meaningful body).
@@ -45,7 +48,7 @@ mattered). Items marked *[fixed S16.5]* were repaired in this pass.
 - Fix: require `Content-Type: application/json` + valid JSON (400
   otherwise); never default destructive flags on parse failure; plus C1.
 
-### C3. `/api/settings` → unauthenticated config write → RCE as the user
+### C3. `/api/settings` → unauthenticated config write → RCE as the user ✅ FIXED S16.6
 - `config.ts:62-93` (`mergeConfig` allowlists *keys*, never *values*);
   `harness.buildCmd`/`testCmd` accept arbitrary strings (`:85-86`) executed
   via shell (`harness.ts:21-34`); `personalities` (`:90`) interpolate into
@@ -58,7 +61,7 @@ mattered). Items marked *[fixed S16.5]* were repaired in this pass.
   API (or an allowlist), numeric ranges, treat
   `personalities`/`model`/`workspacePath` as privileged.
 
-### C4. `projectRoot` path escape → settings-driven arbitrary file delete/copy
+### C4. `projectRoot` path escape → settings-driven arbitrary file delete/copy ✅ FIXED S16.6
 - `config.ts:66` (`projectRoot` accepts any string); `home.ts:32-40`
   (`resolve(home, name)` — absolute input wins, `..` escapes);
   `archive.ts:18-43` (tree copy out), `:51-60` (`rmSync` full wipe).
@@ -73,7 +76,7 @@ mattered). Items marked *[fixed S16.5]* were repaired in this pass.
 
 ## High
 
-### H1. Unbounded human/goal/agent text → prompt bloat and cost burn
+### H1. Unbounded human/goal/agent text → prompt bloat and cost burn ✅ FIXED S16.6
 - `serve-core.ts:182-232` (humanMail/humanTask: no length caps),
   `goal.ts:7-13` (verbatim seed), DB TEXT columns unbounded. Agent schema
   caps only mail `subject ≤120` (`actions.ts:13-14`); bodies, TASK-mail
@@ -86,7 +89,7 @@ mattered). Items marked *[fixed S16.5]* were repaired in this pass.
   ≤200`) + defensive truncation with `[truncated]` markers in
   `buildSituation`.
 
-### H2. Agent→agent prompt injection is structural and unmitigated
+### H2. Agent→agent prompt injection is structural and unmitigated ✅ MITIGATED S16.6
 - `situation.ts:57-116` flat-concatenates inbox (`:97-100`), board titles
   (`:68`), memory (`:89`), goal (`:80`), decisions (`:22-25`), and human
   directives (`:45-55`) into the user message, with no delimiters, no
@@ -103,7 +106,7 @@ mattered). Items marked *[fixed S16.5]* were repaired in this pass.
   provenance. (Some of this is inherent to the design — D6 says budgets,
   not prompts, enforce — but *labeling* is cheap.)
 
-### H3. Shell trusts whatever answers on port 4177 (port-hijack → colony control)
+### H3. Shell trusts whatever answers on port 4177 (port-hijack → colony control) ✅ HARDENED S16.6
 - `shell/main.cjs:24-25` (fixed port), `:67-84` (health check accepts any
   HTTP 200 on `/api/status`), `:106-112` (`nodeIntegration:false` only;
   `contextIsolation`/`sandbox`/`webSecurity` implicit; no
@@ -116,7 +119,7 @@ mattered). Items marked *[fixed S16.5]* were repaired in this pass.
   token on `/api/status` before `loadURL`, `contextIsolation:true,
   sandbox:true`, deny popups/navigation.
 
-### H4. Ownership reassignment piggybacks on moves without a check in two places
+### H4. Ownership reassignment piggybacks on moves ✅ FIXED S16.5/S16.6
 - `packages/db/src/repositories.ts:211-222`: the `owner` field is free-form
   and applied via `COALESCE` on *every* successful move — including
   `done`/`blocked` verification moves that are explicitly exempt from the
@@ -135,7 +138,7 @@ mattered). Items marked *[fixed S16.5]* were repaired in this pass.
 
 ## Medium
 
-### M1. Dashboard XSS: escaped today, fragile by construction
+### M1. Dashboard XSS: escaped today, fragile by construction ✅ HARDENED S16.6
 - Sinks at `dashboard/main.ts:226` (`body.innerHTML`), `:230-261` (mail,
   board, checks, events); two divergent `esc()` implementations (server
   `:15-16` escapes `&<>`, client `:268` escapes only `&<`). Every current
@@ -146,7 +149,7 @@ mattered). Items marked *[fixed S16.5]* were repaired in this pass.
   transient errors.
 - Fix: one escaper (`&<>"'`), CSP, prefer `textContent`/DOM construction.
 
-### M2. Observer CLI: ANSI/terminal injection via agent-controlled strings
+### M2. Observer CLI: ANSI/terminal injection via agent-controlled strings ✅ FIXED S16.6
 - `observer-cli/render.ts:17-52` interpolates subjects/titles/summaries
   with zero sanitization (`main.ts:22` emits raw escape sequences itself).
 - An agent can embed `\x1b[2J` (clear), OSC window-title/hyperlink
@@ -155,7 +158,7 @@ mattered). Items marked *[fixed S16.5]* were repaired in this pass.
 - Fix: one `sanitize()` stripping C0 controls applied to every
   interpolated field.
 
-### M3. `readBody` unbounded + fails open; promise chains lack `.catch`
+### M3. `readBody` unbounded + fails open; promise chains lack `.catch` ✅ FIXED S16.6
 - `serve.ts:139-153`: unbounded concat (trivial memory DoS); parse failure
   → `{}` (feeds C2). `readBody(...).then(...)` chains (`:69,:80,:97,:110,
   :122`) and `manager.start/stop().then(...)` (`:81,:132`) have no
@@ -164,7 +167,7 @@ mattered). Items marked *[fixed S16.5]* were repaired in this pass.
 - Fix: 256 KB cap, require JSON content-type, 400 on parse failure, `.catch`
   → 500 JSON on every chain.
 
-### M4. Single-instance lock bypass → two writers on one SQLite DB
+### M4. Single-instance lock bypass → two writers on one SQLite DB ✅ FIXED S16.6
 - Lock is per-`userData` (`shell/main.cjs:7-17`); `--user-data-dir` or a
   bare `serve` CLI second process bypasses it. In-process guards
   (`serve.ts:88,98`) don't transfer. `resetLab` unlinks `lab.db*`
@@ -179,7 +182,7 @@ mattered). Items marked *[fixed S16.5]* were repaired in this pass.
   sharpens every other finding.
 - Fix: generic client-facing errors; detail to the log file only.
 
-### M6. `ANTFARM_HOME` vs `ANFARM_HOME` — documented env var is dead
+### M6. `ANTFARM_HOME` vs `ANFARM_HOME` — documented env var is dead ✅ FIXED S16.6
 - `home.ts:17-18` reads `process.env.ANFARM_HOME` (missing T; byte-verified
   `41 4E 46 41 52 4D`). Docs (`sprint-13-desktop.md:34`, roadmap),
   `home.ts:7` comment, and `shell/main.cjs:37` all say `ANTFARM_HOME`.
@@ -194,7 +197,7 @@ mattered). Items marked *[fixed S16.5]* were repaired in this pass.
   three test files to use the documented name, add a regression test that
   sets *only* the documented spelling.
 
-### M7. No `busy_timeout` — GUI writes can throw SQLITE_BUSY mid-cycle
+### M7. No `busy_timeout` — GUI writes can throw SQLITE_BUSY mid-cycle ✅ FIXED S16.6
 - `packages/db/src/migrate.ts:126-131` sets WAL + FK but no busy timeout
   (better-sqlite3 default: fail immediately). `labRepos()`
   (`serve-core.ts:170-174`) opens a *second* connection per human
@@ -204,6 +207,9 @@ mattered). Items marked *[fixed S16.5]* were repaired in this pass.
   `labRepos` callers.
 
 ### M8. Unbounded `events`/`session_transcripts` growth (80 MB lab.db observed)
+> Status: intentionally DEFERRED per operator decision — transcript corpus
+> is training data for `projects/baby-agent`. Revisit only with an explicit
+> retention policy that preserves the archive.
 - No retention/GC anywhere; every cycle appends events, sessions, and
   (S16.4) full transcripts. The live BaseOS lab reached ~80 MB. Slow
   queries, slow archives, growing backup surface.
@@ -214,14 +220,14 @@ mattered). Items marked *[fixed S16.5]* were repaired in this pass.
 
 ## Low / hardening notes
 
-- **L1. Dead `/api/lab/agents` route** (verified): handler exists
+- **L1. Dead `/api/lab/agents` route** ✅ FIXED S16.6 (registered): handler exists
   (`serve.ts:64-67`) but the path is absent from `CONTROL_ROUTES`
   (`:20-30`) → falls through to dashboard → 404. The dashboard agents
   dropdown (`main.ts:329-343`) can never populate; consistent with
   `humanMail` only accepting `agent-a`/`agent-b` (`serve-core.ts:183`)
   anyway. Register it or remove it — and decide whether babies are
   human-addressable.
-- **L2. Silent TASK-mail title dedupe** (`cycle.ts:250-253`): no event when
+- **L2. Silent TASK-mail title dedupe** ✅ FIXED S16.6 (`task_create_deduped` event)
   a create is swallowed — the agent can't distinguish "created" from
   "deduped". Emit a `task_create_deduped` event (this exact blindness fed
   the 53-rejection incident).
@@ -268,21 +274,22 @@ mattered). Items marked *[fixed S16.5]* were repaired in this pass.
 
 ---
 
-## Fix priority
+## Fix priority — S16.6 status
 
-1. Bearer token + `Host`/`Origin` checks on all control/settings/view
-   endpoints; drop `ACAO: *`. (C1)
-2. Strict JSON bodies (400 otherwise); never default destructive flags.
-   (C2, M3)
-3. Validate config *values* from the network; no shell commands or
-   escaping paths; cap text lengths. (C3, C4, H1)
-4. Ephemeral port + status-token before `loadURL`; harden
-   `webPreferences`; block popups/navigation. (H3)
-5. Delimit + provenance-label untrusted text in situation prompts. (H2)
-6. Close the seize-by-verify ownership hole (H4 remainder).
-7. Sanitize observer-CLI output. (M2)
-8. Home-dir lockfile shared by serve/reset/archive. (M4)
-9. Fix `ANTFARM_HOME` (+ legacy alias, test corrections). (M6)
-10. `busy_timeout` + `.catch` on serve chains; transcript/event
-    retention; dedupe event; escaper/CSP unification; `/api/lab/agents`
-    decision. (M7, M8, L1–L3)
+1. ✅ Bearer token + `Host` checks on all routes; `ACAO: *` dropped. (C1)
+2. ✅ Strict JSON bodies (400 otherwise); reset fail-closed. (C2, M3)
+3. ✅ Config *values* validated; shell commands / prompt overlays /
+   projectRoot unwritable via network; text caps. (C3, C4, H1)
+4. ✅ Status-token before `loadURL`; `contextIsolation`+`sandbox`;
+   popups/navigation denied. Ephemeral port deferred as overkill. (H3)
+5. ✅ Delimit + provenance-label untrusted text in prompts. (H2)
+6. ✅ Seize-by-verify closed. (H4)
+7. ✅ Observer-CLI sanitize. (M2)
+8. ✅ Home-dir lockfile shared by serve/reset/archive. (M4)
+9. ✅ `ANTFARM_HOME` honored (+ legacy alias, test corrections). (M6)
+10. ✅ `busy_timeout` + `.catch` chains; dedupe event; escaper/CSP;
+    `/api/lab/agents` registered. (M7, L1–L3)
+11. ⏸️ Transcript/event retention — DEFERRED per operator: corpus is
+    training data for baby-agent. (M8)
+12. Open residuals: symlink check before archive copy/delete (L4),
+    budget persistence across restarts (L6).

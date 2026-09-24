@@ -284,6 +284,10 @@ describe('TASK mails create board rows (S12.1)', () => {
 
     const created = repos.events.byKind('task_created');
     expect(created).toHaveLength(1);
+    // both swallowed duplicates (original + re-send in cycle 2) are
+    // auditable, not silent
+    const deduped = repos.events.byKind('task_create_deduped');
+    expect(deduped).toHaveLength(2);
     db.close();
   });
 });

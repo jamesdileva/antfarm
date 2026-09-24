@@ -1,5 +1,6 @@
 const { app, BrowserWindow } = require('electron');
 const { spawn } = require('child_process');
+const { randomBytes } = require('crypto');
 const http = require('http');
 const path = require('path');
 
@@ -22,6 +23,10 @@ let orchestrator = null;
 let quitting = false;
 
 const SERVE_PORT = Number(process.env.ANTFARM_SERVE_PORT || 4177);
+// API bearer token (audit C1): minted per shell launch (or taken from the
+// environment for e2e), handed to the backend via env and to the dashboard
+// via the page URL — the dashboard JS attaches it as a header afterwards.
+const API_TOKEN = process.env.ANTFARM_API_TOKEN || randomBytes(16).toString('hex');
 const STATUS_URL = `http://127.0.0.1:${SERVE_PORT}/api/status`;
 
 /** Repo root in dev (packaged builds will use a bundled entrypoint, S15). */
@@ -34,7 +39,7 @@ function startOrchestrator(homeDir) {
   require('node:fs').mkdirSync(homeDir, { recursive: true });
   const root = repoRoot();
   let entry;
-  let childEnv = { ...process.env, ANTFARM_HOME: homeDir, ANTFARM_SERVE_PORT: String(SERVE_PORT) };
+  let childEnv = { ...process.env, ANTFARM_HOME: homeDir, ANTFARM_SERVE_PORT: String(SERVE_PORT), ANTFARM_API_TOKEN: API_TOKEN };
   let childCwd = root;
   if (app.isPackaged) {
     // packaged: run the bundled orchestrator with Electron-as-Node,
@@ -68,11 +73,29 @@ function waitForHealthy(timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   return new Promise((resolve, reject) => {
     const poll = () => {
-      const req = http.get(STATUS_URL, (res) => {
-        res.resume();
-        if (res.statusCode === 200) return resolve();
-        retry();
-      });
+      // Identity check, not just any-200 (audit H3): a port squatter cannot
+      // produce valid colony JSON without the per-launch token.
+      const req = http.get(
+        STATUS_URL,
+        { headers: { 'x-antfarm-token': API_TOKEN } },
+        (res) => {
+          let raw = '';
+          res.on('data', (c) => {
+            raw += c.toString();
+          });
+          res.on('end', () => {
+            try {
+              const body = JSON.parse(raw);
+              if (res.statusCode === 200 && body && body.colony && typeof body.colony.state === 'string') {
+                return resolve();
+              }
+            } catch {
+              /* not our backend — keep polling */
+            }
+            retry();
+          });
+        }
+      );
       req.on('error', retry);
       function retry() {
         if (Date.now() > deadline) reject(new Error('orchestrator did not become healthy in time'));
@@ -107,9 +130,14 @@ async function createWindow() {
     width: 1280,
     height: 860,
     title: 'Antfarm',
-    webPreferences: { nodeIntegration: false },
+    webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true },
   });
-  await win.loadURL(`http://127.0.0.1:${SERVE_PORT}/`);
+  // No popups / navigations away — the dashboard is a single local page.
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  win.webContents.on('will-navigate', (event, navUrl) => {
+    if (!navUrl.startsWith(`http://127.0.0.1:${SERVE_PORT}/`)) event.preventDefault();
+  });
+  await win.loadURL(`http://127.0.0.1:${SERVE_PORT}/?token=${encodeURIComponent(API_TOKEN)}`);
 }
 
 process.on('uncaughtException', (err) => {

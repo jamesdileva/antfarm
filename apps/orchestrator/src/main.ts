@@ -355,9 +355,10 @@ async function main(): Promise<void> {
       setAntfarmHome(process.argv[homeIdx + 1]!);
       console.log(`data home: ${process.argv[homeIdx + 1]}`);
     }
-    const { startServe } = await import('./serve.js');
+    const { startServe, apiToken } = await import('./serve.js');
     const app = await startServe(Number(process.env.ANTFARM_SERVE_PORT ?? 4177));
     console.log(`antfarm serve: control API + dashboard on http://127.0.0.1:${app.port}`);
+    console.log(`api token (curl header x-antfarm-token): ${apiToken()}`);
   } else if (cmd === undefined || cmd === 'run' || cmd.startsWith('--')) await run();
   else {
     console.error(`unknown command: ${cmd} (try: init | archive | reset | nursery | stats | serve | run)`);

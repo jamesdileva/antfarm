@@ -11,7 +11,8 @@ export const MailAction = z.object({
   /** models instinctively reply with 'ANSWER'; accept it as STATUS instead of failing the cycle */
   type: z.preprocess((v) => (v === 'ANSWER' ? 'STATUS' : v), z.enum(MessageTypes)),
   subject: z.string().min(1).max(120),
-  body: z.string().min(1),
+  // unbounded bodies inflate every future prompt of the recipient (audit H1)
+  body: z.string().min(1).max(8000),
   priority: z.number().int().min(1).max(9).optional(),
   refs: z.array(RefSchema).optional(),
 });
@@ -24,7 +25,7 @@ export const TaskMoveAction = z.object({
     return v;
   }, z.number().int().positive()),
   state: z.preprocess((v) => (typeof v === 'string' ? v.trim().toLowerCase() : v), z.enum(TaskStates)),
-  owner: z.string().nullable().optional(),
+  owner: z.string().max(64).nullable().optional(),
 });
 
 export const ActionsOutput = z.object({
@@ -32,7 +33,7 @@ export const ActionsOutput = z.object({
   taskMoves: z.array(TaskMoveAction).default([]),
   /** compacted working memory (≤ ~20 lines); empty string = no update */
   memoryUpdate: z.string().max(4000).default(''),
-  summary: z.string().default(''),
+  summary: z.string().max(500).default(''),
 });
 
 export type MailActionT = z.infer<typeof MailAction>;

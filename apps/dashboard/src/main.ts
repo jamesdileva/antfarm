@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse, type Server } from 'node:http';
 import { existsSync } from 'node:fs';
 import { writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 import { openDb } from '@antfarm/db';
 import { buildView, type ObserverView } from '@antfarm/observer-cli';
 import { loadConfigFrom, mergeConfig, type LabConfig } from '@antfarm/orchestrator/config.js';
@@ -13,7 +13,59 @@ export function labDbPath(): string {
 }
 
 const esc = (s: unknown): string =>
-  String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+/** Patch-shape validation (audit C3): mergeConfig silently drops mistyped
+ * values, which would let a caller believe a setting applied when it did
+ * not. Reject wrong-typed keys outright; ranges are checked post-merge. */
+function validateNetworkPatch(patch: Record<string, unknown>): void {
+  const is = (v: unknown, t: string): boolean => typeof v === t;
+  if (patch.model !== undefined && !is(patch.model, 'string')) throw new Error('model must be a string');
+  if (patch.workspacePath !== undefined && patch.workspacePath !== null && !is(patch.workspacePath, 'string')) {
+    throw new Error('workspacePath must be a string or null');
+  }
+  if (patch.sessionGc !== undefined && !is(patch.sessionGc, 'boolean')) {
+    throw new Error('sessionGc must be a boolean');
+  }
+  for (const k of ['idleTickMs', 'exhaustionCooldownMs'] as const) {
+    if (patch[k] !== undefined && !is(patch[k], 'number')) throw new Error(`${k} must be a number`);
+  }
+  if (patch.budgets !== undefined) {
+    if (typeof patch.budgets !== 'object' || patch.budgets === null) throw new Error('budgets must be an object');
+    for (const k of ['maxTokensPerCycle', 'maxCyclesPerHour'] as const) {
+      const v = (patch.budgets as Record<string, unknown>)[k];
+      if (v !== undefined && !is(v, 'number')) throw new Error(`budgets.${k} must be a number`);
+    }
+  }
+}
+
+/** Value validation for network-written config (audit C3/C4/L3): keys are
+ * allowlisted by mergeConfig, but values were never checked — an absolute
+ * workspacePath escape, absurd budgets, or a 10 MB model string all sailed
+ * through. Throws on the first offender; the handler answers 400. */
+function validateNetworkConfig(cfg: LabConfig): void {
+  if (cfg.model !== undefined && cfg.model.length > 200) {
+    throw new Error('model must be at most 200 chars (blank = provider default)');
+  }
+  if (cfg.workspacePath !== undefined) {
+    if (cfg.workspacePath.length > 500) throw new Error('workspacePath too long (max 500 chars)');
+    if (!isAbsolute(cfg.workspacePath)) throw new Error('workspacePath must be an absolute path');
+  }
+  const int = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v);
+  if (!int(cfg.budgets.maxTokensPerCycle) || cfg.budgets.maxTokensPerCycle < 1) {
+    throw new Error('budgets.maxTokensPerCycle must be a positive integer');
+  }
+  if (!int(cfg.budgets.maxCyclesPerHour) || cfg.budgets.maxCyclesPerHour < 1) {
+    throw new Error('budgets.maxCyclesPerHour must be a positive integer');
+  }
+  if (!int(cfg.idleTickMs) || cfg.idleTickMs < 1000) {
+    throw new Error('idleTickMs must be an integer >= 1000');
+  }
+  if (!int(cfg.exhaustionCooldownMs) || cfg.exhaustionCooldownMs < 0) {
+    throw new Error('exhaustionCooldownMs must be an integer >= 0');
+  }
+  if (typeof cfg.sessionGc !== 'boolean') throw new Error('sessionGc must be a boolean');
+}
 
 function emptyView(): ObserverView & { fresh: boolean } {
   return {
@@ -46,8 +98,19 @@ export function handle(dbPath: string, configPath = join(antfarmHome(), 'lab.con
         req.on('end', () => {
           try {
             const patch = JSON.parse(raw || '{}') as Record<string, unknown>;
+            // Privileged fields are config-file/CLI only (audit C3/C4): shell
+            // commands, prompt overlays, and the project root must never
+            // arrive over the network — the GUI does not expose them, so any
+            // patch carrying them is rejected outright.
+            for (const k of ['harness', 'personalities', 'projectRoot']) {
+              if (patch[k] !== undefined) {
+                throw new Error(`setting "${k}" is not writable via the network API (edit lab.config.json instead)`);
+              }
+            }
             // merge over the CURRENT file so unrelated keys survive
             const merged = mergeConfig(loadConfigFrom(configPath), patch);
+            validateNetworkPatch(patch);
+            validateNetworkConfig(merged);
             writeFileSync(configPath, JSON.stringify(merged, null, 2), 'utf8');
             res.writeHead(200, { 'content-type': 'application/json' });
             res.end(JSON.stringify({ ok: true, config: merged }));
@@ -132,6 +195,7 @@ function page(): string {
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'">
 <title>antfarm — live whiteboard</title>
 <style>
   :root { color-scheme: dark; }
@@ -218,11 +282,15 @@ function page(): string {
 <span id="save-msg"></span>
 </section>
 <script>
+const TOKEN = new URLSearchParams(location.search).get('token') || '';
+const AUTH = TOKEN ? {'x-antfarm-token': TOKEN} : {};
+function jget(p) { return fetch(p, {headers: AUTH}); }
+function jpost(p, body) { return fetch(p, {method:'POST', headers: Object.assign({'content-type':'application/json'}, AUTH), body: JSON.stringify(body ?? {})}); }
 const cls = (s) => ({done:'done', failed:'failed', timed_out:'timed_out', never:'never',
                      active:'active', blocked:'blocked'}[String(s)] ?? '');
 async function refresh() {
   try {
-    const v = await (await fetch('/api/view')).json();
+    const v = await (await jget('/api/view')).json();
     if (v.error) { document.body.innerHTML = '<div class="err">lab busy: ' + esc(v.error) + '</div>'; return; }
     const banner = document.getElementById('fresh-banner');
     if (banner) banner.style.display = v.fresh ? 'block' : 'none';
@@ -262,14 +330,14 @@ async function refresh() {
   } catch (err) { /* transient — poll again */ }
 }
 setInterval(refresh, 5000);
-const es = new EventSource('/api/stream');
+const es = new EventSource('/api/stream' + (TOKEN ? '?token=' + encodeURIComponent(TOKEN) : ''));
 es.onmessage = refresh; // push-driven refresh on new events
 refresh();
-function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 
 async function loadSettings() {
   try {
-    const cfg = await (await fetch('/api/settings')).json();
+    const cfg = await (await jget('/api/settings')).json();
     if (cfg.error !== undefined) throw new Error('settings API unavailable');
     document.getElementById('s-model').value = cfg.model ?? '';
     document.getElementById('s-ws').value = cfg.workspacePath ?? '';
@@ -290,7 +358,7 @@ const controlMsg = document.getElementById('control-msg');
 function note(t, color) { controlMsg.textContent = t; controlMsg.style.color = color || '#8b949e'; }
 async function control(endpoint, body) {
   try {
-    const res = await fetch(endpoint, { method: 'POST', headers: {'content-type':'application/json'}, body: JSON.stringify(body ?? {}) });
+    const res = await jpost(endpoint, body);
     const out = await res.json();
     if (!out.ok && out.error) { note('error: ' + out.error, '#f85149'); return false; }
     refresh(); return true;
@@ -303,7 +371,7 @@ document.getElementById('start-live').onclick = async () => {
 document.getElementById('stop').onclick = () => control('/api/lab/stop');
 document.getElementById('archive').onclick = async () => {
   if (!confirm('Archive the current lab (project + database) into archives/?')) return;
-  const res = await fetch('/api/lab/archive', { method: 'POST', headers: {'content-type':'application/json'}, body: '{}' });
+  const res = await jpost('/api/lab/archive', {});
   const out = await res.json();
   if (out.ok) note('archived to ' + out.path, '#3fb950');
   else note('archive failed: ' + out.error, '#f85149');
@@ -318,7 +386,7 @@ refreshAgents();
 async function refreshGoal() {
   const el = document.getElementById('goal-current');
   try {
-    const g = await (await fetch('/api/lab/goal')).json();
+    const g = await (await jget('/api/lab/goal')).json();
     let text = '';
     if (g.goal) text += 'current goal (' + (g.mode || 'directed') + ' mode)' + String.fromCharCode(10) + g.goal;
     if (g.workspaceGoal) text += (text ? String.fromCharCode(10) + String.fromCharCode(10) : '') + '[self-authored by colony]' + String.fromCharCode(10) + g.workspaceGoal;
@@ -328,7 +396,7 @@ async function refreshGoal() {
 }
 async function refreshAgents() {
   try {
-    const a = await (await fetch('/api/lab/agents')).json();
+    const a = await (await jget('/api/lab/agents')).json();
     const sel = document.getElementById('hm-to');
     const current = sel.value;
     sel.innerHTML = '';
@@ -376,7 +444,7 @@ document.getElementById('preset-autonomous').onclick = async () => {
   if (!confirm('Full freedom: clears PROJECT_GOAL.md AND turns off the project-selection vote. Agents run on drives alone.')) return;
   pendingMode = undefined;
   document.getElementById('goal-input').value = '';
-  const res = await fetch('/api/lab/init', { method: 'POST', headers: {'content-type':'application/json'}, body: JSON.stringify({ clearGoal: true, mode: 'directed' }) });
+  const res = await jpost('/api/lab/init', { clearGoal: true, mode: 'directed' });
   const out = await res.json();
   if (out.ok) { note('full freedom active - no goal, no selection vote', '#3fb950'); refreshGoal();
 refreshAgents(); }
@@ -400,12 +468,12 @@ document.getElementById('hm-send').onclick = async () => {
   const subject = document.getElementById('hm-subject').value.trim();
   if (!subject) { hcNote('subject required', '#f85149'); return; }
   try {
-    const res = await fetch('/api/human/mail', { method: 'POST', headers: {'content-type':'application/json'}, body: JSON.stringify({
+    const res = await jpost('/api/human/mail', {
       to: document.getElementById('hm-to').value,
       type: document.getElementById('hm-type').value,
       subject,
       body: document.getElementById('hm-body').value,
-    }) });
+    });
     const out = await res.json();
     if (out.ok) {
       hcNote('mail #' + out.id + ' delivered into their next cycle', '#3fb950');
@@ -418,10 +486,10 @@ document.getElementById('ht-add').onclick = async () => {
   const title = document.getElementById('ht-title').value.trim();
   if (!title) { hcNote('task title required', '#f85149'); return; }
   try {
-    const res = await fetch('/api/human/task', { method: 'POST', headers: {'content-type':'application/json'}, body: JSON.stringify({
+    const res = await jpost('/api/human/task', {
       title,
       owner: document.getElementById('ht-owner').value,
-    }) });
+    });
     const out = await res.json();
     if (out.ok) {
       hcNote('task #' + out.id + ' on the board', '#3fb950');
@@ -431,7 +499,7 @@ document.getElementById('ht-add').onclick = async () => {
 };
 setInterval(async () => {
   try {
-    const s = await (await fetch('/api/status')).json();
+    const s = await (await jget('/api/status')).json();
     document.getElementById('colony-state').textContent = 'colony: ' + s.colony.state + (s.colony.live ? ' (live)' : '');
   } catch { /* serve mode only */ }
 }, 2000);
@@ -452,7 +520,7 @@ document.getElementById('save').onclick = async () => {
     idleTickMs: num('s-idle'),
     exhaustionCooldownMs: num('s-cool'),
   };
-  const res = await fetch('/api/settings', { method: 'POST', headers: {'content-type':'application/json'}, body: JSON.stringify(patch) });
+  const res = await jpost('/api/settings', patch);
   const out = await res.json();
   document.getElementById('save-msg').textContent = out.ok ? 'saved ✓ (next start)' : 'error: ' + out.error;
   setTimeout(() => { document.getElementById('save-msg').textContent = ''; }, 4000);

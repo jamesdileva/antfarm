@@ -18,6 +18,20 @@ describe('mail type ANSWER alias', () => {
       })
     ).toThrow();
   });
+
+  it('rejects prompt-bloating bodies, summaries, and owners', () => {
+    expect(() =>
+      parseActions({ mails: [{ to: 'a', type: 'STATUS', subject: 's', body: 'b'.repeat(8001) }] })
+    ).toThrow();
+    expect(() => parseActions({ summary: 's'.repeat(501) })).toThrow();
+    expect(() => parseActions({ taskMoves: [{ taskId: 1, state: 'done', owner: 'x'.repeat(65) }] })).toThrow();
+    // boundary values still pass
+    const out = parseActions({
+      mails: [{ to: 'a', type: 'STATUS', subject: 's', body: 'b'.repeat(8000) }],
+      summary: 's'.repeat(500),
+    });
+    expect(out.mails).toHaveLength(1);
+  });
 });
 
 describe('lenient taskMoves coercion', () => {

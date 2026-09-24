@@ -484,6 +484,32 @@ Goals:
 **Exit criteria:** 119/119 tests pass, `tsc -b` clean, new bundle staged,
 colony notified; audit filed with prioritized fix list.
 
+
+## Sprint 16.6 scope (2026-09-24) — audit remediation (all findings except M8)
+
+Goals:
+
+- Batch A (hardening): strict JSON bodies (cap + content-type + 400s,
+  `.catch`→500s), loopback Host check, `ACAO: *` removed, reset
+  fail-closed (explicit `all`), status drops absolute home, ANTFARM_HOME
+  honored (+ legacy alias, tests corrected), `busy_timeout`, unified
+  escaper + CSP, observer ANSI sanitize, `/api/lab/agents` registered,
+  `task_create_deduped` event, intake caps + sitrep truncation,
+  seize-by-verify closed
+- Batch B (validation): network settings reject privileged keys
+  (harness/personalities/projectRoot) + value validation; prompt
+  provenance markers + instruction-hierarchy rule; colony PID lockfile
+  enforced by start/archive/reset (incl. CLI paths)
+- Batch C (auth handshake): shell-minted per-launch bearer token (env
+  override) required on every serve route (header or `?token=`);
+  dashboard JS attaches it; shell health probe validates colony JSON;
+  `contextIsolation`+`sandbox`, popups/navigation denied; e2e updated
+- Deferred: M8 retention (transcript corpus is baby-agent training data);
+  ephemeral port rotation (overkill post-token)
+
+**Exit criteria:** full suite green, `tsc -b` clean, `npm run e2e` PASSED
+on the packaged exe, audit.md ✅-marked, one sprint commit + push.
+
 - First-run preflight in the packaged shell: detect a missing `opencode`
   install and guide/auto-fetch it before colony start (fresh machines
   currently fail at first live start)

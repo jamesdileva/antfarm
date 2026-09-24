@@ -10,6 +10,10 @@ import { join } from 'node:path';
 const EXE = 'release/win-unpacked/Antfarm.exe'.replace(/\//g, '\\');
 const PORT = process.env.ANTFARM_SERVE_PORT || '4177';
 const BASE = `http://127.0.0.1:${PORT}`;
+// audit C1: the shell mints a token per launch unless told otherwise —
+// pin it here so the smoke client can authenticate every call.
+const TOKEN = 'e2e-packaged-token';
+const HEADERS = { 'content-type': 'application/json', 'x-antfarm-token': TOKEN };
 
 const log = (m) => console.log(`[e2e] ${m}`);
 const fail = (m) => {
@@ -23,7 +27,7 @@ async function poll(path, ok, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
-      const res = await fetch(`${BASE}${path}`);
+      const res = await fetch(`${BASE}${path}`, { headers: { 'x-antfarm-token': TOKEN } });
       if (ok(res)) return await res.json().catch(() => ({}));
     } catch {
       /* not up yet */
@@ -62,7 +66,11 @@ async function main() {
     try { rmSync(e2eHome, { recursive: true, force: true }); } catch { /* best effort */ }
   });
   log('launching packaged exe...');
-  const child = spawn(exePath, ['--home', e2eHome], { detached: true, stdio: 'ignore' });
+  const child = spawn(exePath, ['--home', e2eHome], {
+    detached: true,
+    stdio: 'ignore',
+    env: { ...process.env, ANTFARM_API_TOKEN: TOKEN },
+  });
   child.unref();
 
   // 1. backend healthy (self-spawn + §3 rule 6)
@@ -84,7 +92,7 @@ async function main() {
   {
     const deadline = Date.now() + 120000;
     while (Date.now() < deadline) {
-      const s = (await (await fetch(`${BASE}/api/status`)).json()).colony;
+      const s = (await (await fetch(`${BASE}/api/status`, { headers: { 'x-antfarm-token': TOKEN } })).json()).colony;
       if (s.state === 'stopped' && s.lastReport) {
         cyclesRun = s.lastReport.cyclesRun;
         break;
@@ -101,7 +109,7 @@ async function main() {
 async function post(path, body) {
   const res = await fetch(`${BASE}${path}`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: HEADERS,
     body: JSON.stringify(body),
   });
   return { status: res.status, body: await res.json().catch(() => ({})) };

@@ -1,6 +1,7 @@
 import { cpSync, existsSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { homePaths, antfarmHome } from './home.js';
+import { liveLock } from './colonyLock.js';
 import { loadConfigFrom, type LabConfig } from './config.js';
 
 export interface ArchiveResult {
@@ -16,6 +17,10 @@ export interface ArchiveResult {
  * separate, explicit step.
  */
 export function archiveLab(config: LabConfig): ArchiveResult {
+  const holder = liveLock();
+  if (holder) {
+    return { ok: false, error: `colony lock held by pid ${holder.pid} — stop the colony before archiving` };
+  }
   const paths = homePaths(config.projectRoot);
   if (!existsSync(paths.db())) {
     return { ok: false, error: `no lab database at ${paths.db()} — nothing to archive` };
@@ -49,6 +54,10 @@ export interface ResetResult {
 
 /** Wipe lab.db (+wal/shm) and optionally the whole project/ tree. */
 export function resetLab(config: LabConfig, all: boolean): ResetResult {
+  const holder = liveLock();
+  if (holder) {
+    return { ok: false, error: `colony lock held by pid ${holder.pid} — stop the colony before resetting` };
+  }
   const paths = homePaths(config.projectRoot);
   if (!existsSync(paths.db()) && !existsSync(paths.project)) {
     return { ok: false, error: 'nothing to reset — no lab found' };

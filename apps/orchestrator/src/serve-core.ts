@@ -4,6 +4,7 @@ import { runLoop, type LoopReport } from './loop.js';
 import { buildDeps } from './lab.js';
 import { loadConfigFrom, writeConfig, type LabConfig } from './config.js';
 import { homePaths } from './home.js';
+import { clearLock, liveLock, writeLock } from './colonyLock.js';
 import { seedGoal, GOAL_FILE } from './goal.js';
 import { openDb, createRepos, type Repos } from '@antfarm/db';
 
@@ -44,6 +45,13 @@ export class ColonyManager {
     if (this.state !== 'stopped') {
       return { ok: false, error: `colony is ${this.state}` };
     }
+    // cross-process guard: another server may own this home (audit M4).
+    // Any live lock refuses — including our own pid, which can only mean a
+    // previous start never cleaned up (inconsistent state, fail closed).
+    const holder = liveLock();
+    if (holder) {
+      return { ok: false, error: `colony lock held by pid ${holder.pid} — stop that colony first` };
+    }
     this.state = 'starting';
     try {
       const cfg = loadConfigFrom(homePaths().config);
@@ -68,6 +76,7 @@ export class ColonyManager {
         ? { persistent: true as const, idleTickMs: cfg.idleTickMs, maxRounds: 1_000_000, signal: controller.signal }
         : { maxRounds: 100_000, signal: controller.signal };
 
+      writeLock(live);
       this.loopPromise = runLoop(built.deps, loopOpts)
         .then((report) => {
           this.lastReport = report;
@@ -79,6 +88,7 @@ export class ColonyManager {
           this.state = 'stopped';
           this.controller = null;
           this.loopPromise = null;
+          clearLock();
           built.close();
         });
       return { ok: true };
@@ -130,6 +140,7 @@ export function initLab(input: {
   }
   let message = '';
   if (input.goal) {
+    if (input.goal.length > 8000) return { ok: false, error: 'goal too long (max 8000 chars)' };
     message += `goal seeded: ${seedGoal(paths.project, input.goal)} `;
   }
   if (input.target) message += 'workspace target set';
@@ -185,7 +196,10 @@ export function humanMail(input: { to?: string; type?: string; subject?: string;
   const type = (MAIL_TYPES as readonly string[]).includes(input.type ?? '') ? (input.type as (typeof MAIL_TYPES)[number]) : 'STATUS';
   const subject = (input.subject ?? '').trim();
   if (!subject) return { ok: false, error: 'subject required' };
+  // unbounded human text inflates every future prompt (audit H1)
+  if (subject.length > 200) return { ok: false, error: 'subject too long (max 200 chars)' };
   const body = input.body ?? '';
+  if (body.length > 8000) return { ok: false, error: 'body too long (max 8000 chars)' };
   const { repos, close } = labRepos();
   try {
     const filed = repos.mail.enqueue('human', { to, type, subject, body, priority: 1 });
@@ -211,6 +225,7 @@ export function humanMail(input: { to?: string; type?: string; subject?: string;
 export function humanTask(input: { title?: string; owner?: string }): HumanResult {
   const title = (input.title ?? '').trim();
   if (!title) return { ok: false, error: 'title required' };
+  if (title.length > 200) return { ok: false, error: 'title too long (max 200 chars)' };
   const owner = AGENTS.includes(input.owner ?? '') ? input.owner! : null;
   const { repos, close } = labRepos();
   try {

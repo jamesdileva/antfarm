@@ -229,6 +229,13 @@ export class TaskRepo {
     if (task.owner && !privileged && task.owner !== actor && !verificationMove) {
       throw new Error(`illegal task move: ${actor} does not own task ${id} (owned by ${task.owner})`);
     }
+    // Verification moves bypass the ownership check (reviewers close other
+    // agents' work), but they must NOT reassign ownership with it — otherwise
+    // any agent seizes any task by "verifying" it (audit H4). Only the
+    // current owner, the platform, or an unowned task may change `owner`.
+    if (owner != null && owner !== task.owner && task.owner && !privileged && task.owner !== actor) {
+      throw new Error(`illegal task move: ${actor} does not own task ${id} (owned by ${task.owner})`);
+    }
     // Human-authored work cannot be dropped by agents (nexus lesson).
     if (toState === 'dropped' && task.created_by === 'human' && !privileged) {
       throw new Error(`illegal task drop: task ${id} was created by the human and may not be dropped by ${actor}`);

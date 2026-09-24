@@ -144,6 +144,23 @@ describe('task repo state machine', () => {
     db.close();
     rmSync(dir, { recursive: true, force: true });
   });
+
+  it('refuses seize-by-verify: verification moves cannot reassign ownership', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'antfarm-tasks-seize-'));
+    const db = openDb(join(dir, 'test.db'));
+    const repos = createRepos(db);
+
+    const task = repos.tasks.create('agent-a', { title: 'owned work' });
+    repos.tasks.move('agent-a', task.id, 'active', 'agent-a');
+    // reviewer may close it, but may not steal it in the same move
+    expect(() => repos.tasks.move('agent-b', task.id, 'done', 'agent-b')).toThrow(/does not own/);
+    expect(repos.tasks.byId(task.id).owner).toBe('agent-a');
+    expect(() => repos.tasks.move('agent-b', task.id, 'done')).not.toThrow();
+    expect(repos.tasks.byId(task.id).state).toBe('done');
+
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
 });
 
 describe('sessions + events', () => {

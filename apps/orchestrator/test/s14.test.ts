@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { openDb, createRepos } from '@antfarm/db';
 import { runLoop } from '../src/loop.js';
-import { createServeHandler, type ServeApp } from '../src/serve.js';
+import { createServeHandler, type ServeApp, apiToken } from '../src/serve.js';
 import { startServe } from '../src/serve.js';
 import { ColonyManager } from '../src/serve-core.js';
 
@@ -47,11 +47,11 @@ describe('serve control API', () => {
 
   beforeEach(() => {
     home = mkdtempSync(join(tmpdir(), 'antfarm-serve-'));
-    process.env.ANFARM_HOME = home;
+    process.env.ANTFARM_HOME = home;
   });
 
   afterEach(() => {
-    delete process.env.ANFARM_HOME;
+    delete process.env.ANTFARM_HOME;
     for (const fn of cleanupFns) fn();
     cleanupFns.length = 0;
     rmSync(home, { recursive: true, force: true });
@@ -66,18 +66,38 @@ describe('serve control API', () => {
     return `http://127.0.0.1:${app.port}${p}`;
   }
 
-  it('exposes status with data-home', async () => {
+  // every serve route requires the bearer token (audit C1)
+  function authedFetch(u: string, o: RequestInit = {}): Promise<Response> {
+    const headers = { ...(o.headers as Record<string, string> | undefined), 'x-antfarm-token': apiToken() };
+    return fetch(u, { ...o, headers });
+  }
+
+  it('exposes status without leaking the absolute data-home path', async () => {
     await boot();
-    const res = await fetch(url('/api/status'));
-    const body = (await res.json()) as { colony: { state: string }; home: string };
+    const res = await authedFetch(url('/api/status'));
+    const body = (await res.json()) as { colony: { state: string }; home?: string };
     expect(res.status).toBe(200);
     expect(body.colony.state).toBe('stopped');
-    expect(body.home).toBe(home);
+    expect(body.home).toBeUndefined();
+  });
+
+  it('rejects unauthenticated control calls with 401', async () => {
+    await boot();
+    const noToken = await fetch(url('/api/status'));
+    expect(noToken.status).toBe(401);
+    const wrongToken = await fetch(url('/api/status'), { headers: { 'x-antfarm-token': 'wrong' } });
+    expect(wrongToken.status).toBe(401);
+    const wrongPost = await fetch(url('/api/lab/reset'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{"all":true}',
+    });
+    expect(wrongPost.status).toBe(401);
   });
 
   it('init writes config + goal into the ANTFARM_HOME lab', async () => {
     await boot();
-    const res = await fetch(url('/api/lab/init'), {
+    const res = await authedFetch(url('/api/lab/init'), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ goal: 'GUI-created lab', mode: 'directed' }),
@@ -93,19 +113,19 @@ describe('serve control API', () => {
 
   it('goal endpoint returns null before seeding and the goal after init', async () => {
     await boot();
-    const resBefore = await fetch(url('/api/lab/goal'));
+    const resBefore = await authedFetch(url('/api/lab/goal'));
     const before = (await resBefore.json()) as { goal: string | null; mode: string };
     expect(before.goal).toBeNull();
     expect(before.mode).toBe('directed');
 
-    const initRes = await fetch(url('/api/lab/init'), {
+    const initRes = await authedFetch(url('/api/lab/init'), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ goal: 'visible mission', mode: 'constrained' }),
     });
     expect((await initRes.json()).ok).toBe(true);
 
-    const resAfter = await fetch(url('/api/lab/goal'));
+    const resAfter = await authedFetch(url('/api/lab/goal'));
     const after = (await resAfter.json()) as { goal: string | null; mode: string };
     expect(after.goal).toBe('visible mission');
     expect(after.mode).toBe('constrained');
@@ -113,7 +133,7 @@ describe('serve control API', () => {
 
   it('archive snapshots then reset wipes via control API', async () => {
     await boot();
-    await fetch(url('/api/lab/init'), {
+    await authedFetch(url('/api/lab/init'), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ goal: 'to be archived', mode: 'directed' }),
@@ -122,32 +142,98 @@ describe('serve control API', () => {
     const { openDb } = await import('@antfarm/db');
     openDb(join(home, 'project', 'lab.db')).close();
 
-    const archRes = await fetch(url('/api/lab/archive'), { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+    const archRes = await authedFetch(url('/api/lab/archive'), { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
     const archived = (await archRes.json()) as { ok: boolean; path?: string; error?: string };
     expect(archived.ok).toBe(true);
     expect(existsSync(join(archived.path!, 'project', 'shared', 'PROJECT_GOAL.md'))).toBe(true);
 
-    const resetRes = await fetch(url('/api/lab/reset'), { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+    const resetRes = await authedFetch(url('/api/lab/reset'), { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"all":true}' });
     const reset = (await resetRes.json()) as { ok: boolean };
     expect(reset.ok).toBe(true);
     expect(existsSync(join(home, 'project', 'lab.db'))).toBe(false);
     // goal is gone after reset
-    const goalRes = await fetch(url('/api/lab/goal'));
+    const goalRes = await authedFetch(url('/api/lab/goal'));
     expect(((await goalRes.json()) as { goal: string | null }).goal).toBeNull();
     // archive survived the reset
     expect(existsSync(join(archived.path!, 'project', 'shared', 'PROJECT_GOAL.md'))).toBe(true);
   });
 
+  it('rejects non-JSON bodies, wrong content-type, and fail-open resets', async () => {
+    await boot();
+
+    // wrong content-type (preflight-less CSRF shape) → 400, no action
+    const form = await authedFetch(url('/api/lab/reset'), { method: 'POST', body: 'all=true' });
+    expect(form.status).toBe(400);
+
+    // invalid JSON → 400
+    const bad = await authedFetch(url('/api/lab/reset'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{nope',
+    });
+    expect(bad.status).toBe(400);
+
+    // seed a db so reset has something to refuse to wipe fail-openly
+    mkdirSync(join(home, 'project'), { recursive: true });
+    const { openDb } = await import('@antfarm/db');
+    openDb(join(home, 'project', 'lab.db')).close();
+
+    // empty object must NOT wipe (fail-closed default)
+    const empty = await authedFetch(url('/api/lab/reset'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+    });
+    const emptyBody = (await empty.json()) as { ok: boolean };
+    expect(emptyBody.ok).toBe(false);
+    expect(existsSync(join(home, 'project', 'lab.db'))).toBe(true);
+  });
+
+  it('rejects oversize human text (prompt-bloat caps)', async () => {
+    await boot();
+    mkdirSync(join(home, 'project'), { recursive: true });
+    const { openDb } = await import('@antfarm/db');
+    openDb(join(home, 'project', 'lab.db')).close();
+
+    const longSubject = await authedFetch(url('/api/human/mail'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ to: 'agent-a', subject: 'x'.repeat(201), body: 'b' }),
+    });
+    expect(((await longSubject.json()) as { ok: boolean }).ok).toBe(false);
+
+    const longBody = await authedFetch(url('/api/human/mail'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ to: 'agent-a', subject: 's', body: 'b'.repeat(8001) }),
+    });
+    expect(((await longBody.json()) as { ok: boolean }).ok).toBe(false);
+
+    const longTitle = await authedFetch(url('/api/human/task'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ title: 't'.repeat(201) }),
+    });
+    expect(((await longTitle.json()) as { ok: boolean }).ok).toBe(false);
+
+    const longGoal = await authedFetch(url('/api/lab/init'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ goal: 'g'.repeat(8001) }),
+    });
+    expect(((await longGoal.json()) as { ok: boolean }).ok).toBe(false);
+  });
+
   it('clearGoal removes PROJECT_GOAL.md (autonomous)', async () => {
     await boot();
-    await fetch(url('/api/lab/init'), {
+    await authedFetch(url('/api/lab/init'), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ goal: 'temporary mission' }),
     });
     expect(existsSync(join(home, 'project', 'shared', 'PROJECT_GOAL.md'))).toBe(true);
 
-    const res = await fetch(url('/api/lab/init'), {
+    const res = await authedFetch(url('/api/lab/init'), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ clearGoal: true, mode: 'directed' }),
@@ -156,7 +242,7 @@ describe('serve control API', () => {
     expect(existsSync(join(home, 'project', 'shared', 'PROJECT_GOAL.md'))).toBe(false);
     // full-freedom preset also flips the gate off
     expect(JSON.parse(readFileSync(join(home, 'lab.config.json'), 'utf8')).mode).toBe('directed');
-    const goalRes = await fetch(url('/api/lab/goal'));
+    const goalRes = await authedFetch(url('/api/lab/goal'));
     expect(((await goalRes.json()) as { goal: string | null }).goal).toBeNull();
   });
 
@@ -166,7 +252,7 @@ describe('serve control API', () => {
     const { openDb } = await import('@antfarm/db');
     openDb(join(home, 'project', 'lab.db')).close();
 
-    const mailRes = await fetch(url('/api/human/mail'), {
+    const mailRes = await authedFetch(url('/api/human/mail'), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ to: 'agent-a', type: 'TASK', subject: 'human GUI ask', body: 'details here' }),
@@ -174,7 +260,7 @@ describe('serve control API', () => {
     const mailed = (await mailRes.json()) as { ok: boolean; id?: number; error?: string };
     expect(mailed.ok).toBe(true);
 
-    const taskRes = await fetch(url('/api/human/task'), {
+    const taskRes = await authedFetch(url('/api/human/task'), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ title: 'human-created task', owner: 'agent-b' }),
@@ -183,7 +269,7 @@ describe('serve control API', () => {
     expect(tasked.ok).toBe(true);
 
     // validation errors
-    const bad = await fetch(url('/api/human/mail'), {
+    const bad = await authedFetch(url('/api/human/mail'), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ to: 'agent-c', subject: 'x' }),
@@ -210,7 +296,7 @@ describe('serve control API', () => {
   it('init rejects non-git targets', async () => {
     await boot();
     const notARepo = mkdtempSync(join(tmpdir(), 'antfarm-nogit-'));
-    const res = await fetch(url('/api/lab/init'), {
+    const res = await authedFetch(url('/api/lab/init'), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ target: notARepo }),
@@ -223,7 +309,7 @@ describe('serve control API', () => {
 
   it('starts a dry-run colony and reports completion via status polling', async () => {
     await boot();
-    const start = await fetch(url('/api/lab/start'), {
+    const start = await authedFetch(url('/api/lab/start'), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ live: false }),
@@ -234,7 +320,7 @@ describe('serve control API', () => {
     let report: { cyclesRun?: number } | null = null;
     for (let i = 0; i < 50; i++) {
       await new Promise((r) => setTimeout(r, 100));
-      const status = (await (await fetch(url('/api/status'))).json()) as {
+      const status = (await (await authedFetch(url('/api/status'))).json()) as {
         colony: { state: string; lastReport: { cyclesRun: number } | null };
       };
       if (status.colony.state === 'stopped' && status.colony.lastReport) {
@@ -253,13 +339,13 @@ describe('serve control API', () => {
 
   it('rejects double-start', async () => {
     await boot();
-    void fetch(url('/api/lab/start'), {
+    void authedFetch(url('/api/lab/start'), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ live: false }),
     });
     // immediately try again — may race before state flips to running
-    const second = await fetch(url('/api/lab/start'), {
+    const second = await authedFetch(url('/api/lab/start'), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ live: false }),
@@ -269,7 +355,7 @@ describe('serve control API', () => {
     // wait for the dry colony to finish before cleanup
     for (let i = 0; i < 50; i++) {
       await new Promise((r) => setTimeout(r, 100));
-      const status = (await (await fetch(url('/api/status'))).json()) as {
+      const status = (await (await authedFetch(url('/api/status'))).json()) as {
         colony: { state: string };
       };
       if (status.colony.state === 'stopped') break;

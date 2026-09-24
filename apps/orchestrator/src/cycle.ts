@@ -261,6 +261,14 @@ function commitActions(deps: OrchestratorDeps, agent: string, sessionId: number,
           actor: agent,
           payload: { taskId: task.id, from: agent, assignedTo: m.to, messageId: filed.id },
         });
+      } else {
+        // Swallowed creates were invisible for 50+ cycles (BaseOS lesson) —
+        // log the dedupe so the board's reasoning is auditable.
+        repos.events.append({
+          kind: 'task_create_deduped',
+          actor: agent,
+          payload: { taskId: existing.id, from: agent, messageId: filed.id },
+        });
       }
     }
     // DECISIONS.md protocol: decisions enter the shared event log

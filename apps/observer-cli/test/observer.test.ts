@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createRepos, openDb, type Db } from '@antfarm/db';
 import { buildView } from '../src/view.js';
-import { render } from '../src/render.js';
+import { render, sanitize } from '../src/render.js';
 import {
   PERSONALITIES,
   renderDrivePrompt,
@@ -71,6 +71,21 @@ describe('observer view', () => {
     expect(text).toContain('ANTFARM');
     expect(text).toContain('(no mail yet)');
     expect(text).toContain('never run');
+  });
+
+  it('strips terminal control bytes from agent-controlled strings', () => {
+    // control bytes vanish; printable leftovers ([2J) stay — they are inert
+    expect(sanitize('ok\x1b[2Jclean')).toBe('ok[2Jclean');
+    expect(sanitize('a\rb')).toBe('ab');
+    expect(sanitize('x\x07y')).toBe('xy');
+    expect(sanitize(42)).toBe('42');
+    const repos = createRepos(db);
+    repos.tasks.create('human', { title: 'evil\x1b]0;pwned\x07title' });
+    const text = render(buildView(dbPath));
+    // initiator (ESC) and terminator (BEL) are gone, so the OSC sequence
+    // cannot execute — our own color codes are the only escapes left
+    expect(text).toContain('evil]0;pwnedtitle');
+    expect(text.replace(/\x1b\[[0-9;]*m/g, '')).not.toContain('\x1b');
   });
 });
 
