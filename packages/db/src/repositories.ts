@@ -201,6 +201,23 @@ export class TaskRepo {
 
   move(actor: string, id: number, toState: TaskState, owner?: string | null): TaskRow {
     const task = this.byId(id);
+    const privileged = actor === 'orchestrator' || actor === 'human';
+    // Idempotent re-assert (active→active) is a no-op, not an error —
+    // agents habitually re-state the current state every cycle.
+    if (task.state === toState) {
+      if (owner != null && owner !== task.owner) {
+        // Ownership reassignment on a no-op still honors the ownership rule —
+        // otherwise same-state moves would become a check-free ownership steal.
+        if (task.owner && !privileged && task.owner !== actor) {
+          throw new Error(`illegal task move: ${actor} does not own task ${id} (owned by ${task.owner})`);
+        }
+        this.db
+          .prepare('UPDATE tasks SET owner = ?, updated_at = ? WHERE id = ?')
+          .run(owner, new Date().toISOString(), id);
+        return this.byId(id);
+      }
+      return task;
+    }
     if (!canTransition(task.state, toState)) {
       throw new Error(`illegal task transition ${task.state} -> ${toState}`);
     }
@@ -208,7 +225,6 @@ export class TaskRepo {
     // activates a task; but ANY agent may close or block — verification is
     // a reviewer's job, not just the assignee's (nexus lesson: 6 rejected
     // closes by the critic).
-    const privileged = actor === 'orchestrator' || actor === 'human';
     const verificationMove = toState === 'done' || toState === 'blocked';
     if (task.owner && !privileged && task.owner !== actor && !verificationMove) {
       throw new Error(`illegal task move: ${actor} does not own task ${id} (owned by ${task.owner})`);

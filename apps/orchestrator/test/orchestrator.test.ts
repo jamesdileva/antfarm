@@ -149,6 +149,12 @@ describe('dry-run loop', () => {
     const report = await runLoop(deps);
     expect(report.cyclesRun).toBe(2);
     expect(repos.events.byKind('task_move_rejected').length).toBe(2);
+    // teaching loop: agents get a WARNING explaining the board refusal
+    const warns = repos.mail
+      .byKind('WARNING')
+      .filter((m) => m.to_agent === 'agent-a' && m.subject.includes('do not exist on the board'));
+    expect(warns.length).toBeGreaterThanOrEqual(1);
+    expect(warns[0]!.body).toContain('type TASK');
     db.close();
   });
 });

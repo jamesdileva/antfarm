@@ -19,3 +19,21 @@ describe('mail type ANSWER alias', () => {
     ).toThrow();
   });
 });
+
+describe('lenient taskMoves coercion', () => {
+  it('accepts string taskIds ("5") without failing the cycle', () => {
+    const out = parseActions({
+      taskMoves: [{ taskId: '5', state: 'done' }],
+    });
+    expect(out.taskMoves[0]!.taskId).toBe(5);
+    expect(out.taskMoves[0]!.state).toBe('done');
+  });
+
+  it('accepts mixed-case states and rejects garbage ids', () => {
+    const out = parseActions({
+      taskMoves: [{ taskId: ' 7 ', state: ' Active ' }],
+    });
+    expect(out.taskMoves[0]).toEqual({ taskId: 7, state: 'active' });
+    expect(() => parseActions({ taskMoves: [{ taskId: 'abc', state: 'done' }] })).toThrow();
+  });
+});

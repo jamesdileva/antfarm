@@ -102,6 +102,28 @@ describe('task repo state machine', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  it('treats same-state moves as idempotent no-ops', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'antfarm-tasks-noop-'));
+    const db = openDb(join(dir, 'test.db'));
+    const repos = createRepos(db);
+
+    const task = repos.tasks.create('agent-a', { title: 'reassert' });
+    repos.tasks.move('agent-a', task.id, 'active', 'agent-a');
+    expect(() => repos.tasks.move('agent-a', task.id, 'active')).not.toThrow();
+    expect(repos.tasks.byId(task.id).state).toBe('active');
+
+    // same-state owner reassignment still honors the ownership rule —
+    // a non-owner cannot seize the task via a no-op move
+    expect(() => repos.tasks.move('agent-b', task.id, 'active', 'agent-b')).toThrow(/does not own/);
+    expect(repos.tasks.byId(task.id).owner).toBe('agent-a');
+    // ...but the owner itself (or platform) may reassign on a no-op
+    expect(() => repos.tasks.move('agent-a', task.id, 'active', 'agent-b')).not.toThrow();
+    expect(repos.tasks.byId(task.id).owner).toBe('agent-b');
+
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   it('protects human-created tasks from agent drops', () => {
     const dir = mkdtempSync(join(tmpdir(), 'antfarm-humantask-'));
     const db = openDb(join(dir, 'test.db'));

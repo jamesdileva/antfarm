@@ -94,6 +94,7 @@ the subject names the phase goal.
 | 2026-09-11 | S16.2 | Error capture broadened: free-usage/quota/auth errors detected and logged (no retry — quota resets ~24h); stale nexus testCmd removed from harness (defaults to npm run --if-present test for any pointed project); PS-BOM config crash fixed in loader; dashboard unicode repaired; goal editor added to colony panel | 116/116 pass - build green - e2e green | |
 | 2026-09-11 | S16.3 | Colony agent hang root-caused and fixed: external_directory permission defaults to "ask" causing infinite freeze in non-interactive mode; permission set to "allow" via OPENCODE_CONFIG_CONTENT; glob performance guidance added to system prompt (avoids ** traversals through node_modules/dist) | 116/116 pass - build green - e2e green | 29bee5d |
 | 2026-09-11 | S16.4 | Transcript capture on timeout: timeout handler now calls captureAndDispose to read session messages before marking timed_out, preventing loss of agent work that exceeded 600s window; transcripts saved to session_transcripts table for analysis | 116/116 pass - build green - e2e green | 36962f4 |
+| 2026-09-23 | S16.5 | Board-protocol fix: prompt states TASK-mail creates/taskMoves moves, string taskId coercion, data.info guard, phantom-id teaching WARNING, same-state no-op; adversarial audit.md (4 critical/4 high/8 med); colony notified via mail #79/#80 | 119/119 pass - build green - bundle restaged | PENDING |
 
 <!--
 Add one row per sprint at completion:

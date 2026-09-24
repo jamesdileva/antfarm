@@ -17,8 +17,13 @@ export const MailAction = z.object({
 });
 
 export const TaskMoveAction = z.object({
-  taskId: z.number().int().positive(),
-  state: z.enum(TaskStates),
+  // models instinctively quote ids ("5") — coerce instead of failing the
+  // whole cycle (same lesson as the ANSWER→STATUS mail alias).
+  taskId: z.preprocess((v) => {
+    if (typeof v === 'string' && /^\d+$/.test(v.trim())) return Number(v.trim());
+    return v;
+  }, z.number().int().positive()),
+  state: z.preprocess((v) => (typeof v === 'string' ? v.trim().toLowerCase() : v), z.enum(TaskStates)),
   owner: z.string().nullable().optional(),
 });
 

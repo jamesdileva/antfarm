@@ -258,6 +258,15 @@ export class OpenCodeDriver implements AgentDriver {
       '{"mails":[{"to":"agent-a|agent-b","type":"QUESTION|IDEA|TASK|REVIEW|WARNING|DECISION|STATUS|HELP","subject":"≤120 chars","body":"...","priority":1-9}],"taskMoves":[{"taskId":number,"state":"proposed|active|blocked|done|dropped","owner":"agent id or null"}],"memoryUpdate":"compact working memory or empty string","summary":"one line"}',
       'Omit fields you do not need. No markdown fences.',
       '',
+      'TASK BOARD RULES:',
+      '- taskMoves ONLY changes the state of a task already listed on the board',
+      '  in the situation report — use its exact #id. A move for an id not on',
+      '  the board is rejected (task N not found). You cannot create a task',
+      '  with taskMoves.',
+      '- To CREATE a task, send a mail with "type":"TASK" — subject becomes',
+      '  the board title, body the description, recipient the owner. The',
+      '  platform adds the row and it appears on the board next cycle.',
+      '',
       'PERFORMANCE: When searching files, use specific paths like "src/**/*.ts" or "apps/**/*.ts". Never use root-level "**/*.ts" or "**/*" — they traverse all directories including node_modules and dist, causing extreme slowness (15-115 seconds per glob).',
       '',
       this.opts.context ? this.opts.context() : '',
@@ -294,6 +303,13 @@ export class OpenCodeDriver implements AgentDriver {
       }
     }
 
+    // SDK errors can resolve without `.data` (shape drift across opencode
+    // server versions) — fail with context instead of a bare TypeError.
+    if (!result?.data?.info) {
+      throw new Error(
+        `prompt response missing data.info (sdk shape mismatch): ${JSON.stringify(result)?.slice(0, 300) ?? String(result)}`
+      );
+    }
     const info = result.data.info;
 
     // Provider-side transient errors (heavy load) also arrive as in-band
@@ -310,7 +326,12 @@ export class OpenCodeDriver implements AgentDriver {
       }
     }
 
-    const info2 = result.data.info;
+    const info2 = result.data?.info;
+    if (!info2) {
+      throw new Error(
+        `prompt response missing data.info after handling (sdk shape mismatch): ${JSON.stringify(result)?.slice(0, 300) ?? String(result)}`
+      );
+    }
     this.usageSamples.set(ctx.agent, extractUsage(info2));
     if (info2.error) {
       throw new Error(`assistant error: ${info2.error.name ?? 'unknown'}: ${info2.error.message ?? ''}`);

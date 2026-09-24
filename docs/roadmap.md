@@ -337,7 +337,7 @@ Exit criteria:
 - Self-approval and malformed proposals are rejected with audit events
 - Stage-1 baby physically cannot move tasks or file non-report mail types
   (gateway-tested); its purpose file matches the parents' text byte-for-byte
-
+could they build and run apps like you guys do and smoke test?
 ### Sprint 10 scope (2026-08-23)
 
 Goals:
@@ -456,7 +456,33 @@ reset then becomes safe to run before starting the next experiment
 archived project + db fully intact and inspectable; all via GUI alone.
 
 
-## Later / backlog
+## Sprint 16.5 scope (2026-09-23) — task-board protocol fix + adversarial audit
+
+Live BaseOS colony root-cause: agents stopped sending `TASK` mails (the only
+board-create path) and emitted `taskMoves` with invented ids (#4–#7, #33),
+collecting 53 correct `task_move_rejected` "not found" refusals; they then
+confabulated a shared "board is broken" fiction. Nothing in the prompts ever
+stated the create-vs-move rule.
+
+Goals:
+
+- Prompt contract: system prompt states taskMoves moves existing board ids
+  only; TASK mail creates (subject = title)
+- Lenient parsing: string taskIds + mixed-case states coerced (same lesson
+  as the ANSWER→STATUS alias) instead of failing whole cycles
+- `result.data` guard: SDK shape drift throws a clear error, not
+  `TypeError: reading 'info'`
+- Teaching WARNING on phantom-id moves (agents can't see the event log)
+- Same-state moves are idempotent no-ops, with the ownership rule still
+  enforced on reassignment (audit-caught hole, fixed pre-commit)
+- Adversarial audit (`audit.md`): 4 critical (unauth control API, CSRF-able
+  wipe, settings→RCE, projectRoot escape), 4 high, 8 medium, 7 low —
+  scheduled, not fixed, in this sprint
+- Repackaged `release/win-unpacked` bundle; human mail to both agents
+  superseding the ignore-board decision
+
+**Exit criteria:** 119/119 tests pass, `tsc -b` clean, new bundle staged,
+colony notified; audit filed with prioritized fix list.
 
 - First-run preflight in the packaged shell: detect a missing `opencode`
   install and guide/auto-fetch it before colony start (fresh machines

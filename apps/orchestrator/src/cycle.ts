@@ -310,6 +310,27 @@ function commitActions(deps: OrchestratorDeps, agent: string, sessionId: number,
         actor: agent,
         payload: { taskId: move.taskId, requested: move.state, error: String(err) },
       });
+      // Teaching loop: agents can't see the event log — tell them WHY the
+      // board refused (phantom-id creates were invisible for 50+ cycles).
+      // One warning per agent ever — re-firing after delivery just churns
+      // extra wake cycles without teaching anything new.
+      if (String(err).includes('not found')) {
+        const alreadyWarned = repos.mail
+          .byKind('WARNING')
+          .some((m) => m.to_agent === agent && m.subject.includes('do not exist on the board'));
+        if (!alreadyWarned) {
+          repos.mail.enqueue('orchestrator', {
+            to: agent,
+            type: 'WARNING',
+            subject: 'tasks do not exist on the board',
+            body:
+              `task #${move.taskId} is not on the board. taskMoves only moves tasks ` +
+              `already listed in the situation report — use their exact #id. To CREATE ` +
+              `a task, send a mail with type TASK — subject becomes the title.`,
+            priority: 1,
+          });
+        }
+      }
     }
   }
 }
